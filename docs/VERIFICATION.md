@@ -75,3 +75,13 @@ APK проверен через apksigner: `Verifies`, v3=true, exit 0. Суще
 Кадры Aa, настроек света, режима без панелей и тёплой страницы сохранены в `app/build/reports/comfort-stage/`. Отдельная проверка отката `ROLLBACK.sh` восстановила только файл-пробу из Git `6bcef99` и подтвердила его SHA-256. Рабочие исходники и основная библиотека остались обновлёнными. Подробные команды и результаты — в `app/build/reports/comfort-stage/VERIFICATION.txt`.
 
 После настройки комфорта release APK/AAB пересобраны: `BUILD SUCCESSFUL in 3s`, exit 0. SHA-256 APK: `8953788effd3e42a8a2ff742d86b67c486719b13ad72173ba93bc90e4e2b0579`; AAB: `8971bd30da35969da799f0166d8b80f0373f05cbcd2677db3f55219df4f2779c`. Проверка apksigner: `Verifies`, v3=true, тот же сертификат WexBooks. Установка через `adb install -r` дала `Success`, exit 0; `client.wexbooks/.MainActivity` подтверждена как topResumedActivity, процесс запущен. Данные основной библиотеки не очищались; временный Dev-хост после тестов удалён.
+
+## Фирменная иконка приложения
+
+Шаблон Android заменён раскрытой книгой на бирюзовом фоне. Добавлен отдельный monochrome drawable; обновлены обе adaptive-иконки и все десять legacy WebP. SVG/PNG 512 px и экспорт из Android-векторов находятся в `artwork/launcher` и `tools/export_launcher_icon.py`.
+
+База: `./gradlew :app:testDebugUnitTest` → `BUILD SUCCESSFUL in 560ms`, exit 0, 40 unit. После замены: `ANDROID_SERIAL=47101FDAS0028Q ./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleRelease :app:bundleRelease -Pandroid.testInstrumentationRunnerArguments.class=client.wexbooks.LauncherIconTest` → `BUILD SUCCESSFUL in 48s`, exit 0. XML: 40 unit и 3 целевых Android-теста, без ошибок/пропусков. Полные 30 сценариев чтения относятся к предыдущему этапу; в этом прогоне проверялись ресурсы иконки.
+
+На Pixel Android Canvas проверены загрузка всех adaptive-слоёв и отдельного monochrome, круговая безопасная зона для обоих знаков, одинаковый растр normal/round и отрисовка тематического варианта. Кадры `pixel-launcher-icon.png` и `pixel-launcher-icon-themed.png` получены из ресурсов приложения, без снимков личного домашнего экрана и без изменения настроек лаунчера.
+
+Lint завершён без ошибок. Подпись apksigner: `Verifies`, v3=true, существующий сертификат сохранён. APK SHA-256: `7323360cc456b9e5af7544df967823b9b53f025d133dff2ecf0d40c4fb7b702b`. Обновление основной release через `adb install -r` → `Success`, exit 0; запуск `client.wexbooks/.MainActivity` и topResumedActivity подтверждены. Книги и настройки не очищались. Проверка отката отдельного файла-пробы и команды — `app/build/reports/icon-stage/VERIFICATION.txt`.
