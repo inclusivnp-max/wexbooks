@@ -171,7 +171,11 @@ fun ReadingPageTheme(
             onSecondaryContainer = Color(page.ink),
         )
     MaterialTheme(colorScheme = scheme) {
-        CompositionLocalProvider(LocalContentColor provides scheme.onBackground) {
+        CompositionLocalProvider(
+            LocalContentColor provides scheme.onBackground,
+            client.wexbooks.ui.glass.LocalUniformGlassBackdrop provides Color(page.background),
+            client.wexbooks.ui.glass.LocalGlassTint provides Color(page.surface),
+        ) {
             content(page.dark)
         }
     }

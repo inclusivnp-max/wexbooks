@@ -9,6 +9,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
@@ -18,6 +19,10 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 
 val LocalReducedTransparency = staticCompositionLocalOf { false }
+
+/** A uniform paper backdrop has no detail to blur/refract. Precompose the same tint once. */
+val LocalUniformGlassBackdrop = staticCompositionLocalOf<Color?> { null }
+val LocalGlassTint = staticCompositionLocalOf<Color?> { null }
 
 enum class GlassRendering {
     Solid,
@@ -42,10 +47,14 @@ fun Modifier.wexGlass(
 ): Modifier {
     val rendering = glassRenderingFor(Build.VERSION.SDK_INT, reduceTransparency)
     val shape = RoundedCornerShape(cornerRadius)
-    val base = if (darkTheme) Color(0xFF242D37) else Color(0xFFFEFDFB)
+    val base = LocalGlassTint.current ?: if (darkTheme) Color(0xFF242D37) else Color(0xFFFEFDFB)
+    val uniform = LocalUniformGlassBackdrop.current
+    val tintAlpha = if (darkTheme) 0.72f else 0.62f
     val material =
         if (rendering == GlassRendering.Solid) {
             Modifier.background(base, shape)
+        } else if (uniform != null) {
+            Modifier.background(base.copy(alpha = tintAlpha).compositeOver(uniform), shape)
         } else {
             Modifier.drawBackdrop(
                 backdrop = backdrop,
@@ -58,7 +67,7 @@ fun Modifier.wexGlass(
                     }
                 },
                 onDrawSurface = {
-                    drawRect(base.copy(alpha = if (darkTheme) 0.72f else 0.62f))
+                    drawRect(base.copy(alpha = tintAlpha))
                 },
             )
         }
