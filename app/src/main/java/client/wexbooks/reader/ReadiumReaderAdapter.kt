@@ -13,8 +13,6 @@ import org.json.JSONObject
 import org.readium.navigator.web.reflowable.ReflowableWebGoLocation
 import org.readium.navigator.web.reflowable.ReflowableWebRenditionFactory
 import org.readium.navigator.web.reflowable.ReflowableWebRenditionState
-import org.readium.navigator.web.reflowable.preferences.ReflowableWebPreferences
-import org.readium.r2.navigator.preferences.Color as ReadiumColor
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -48,24 +46,7 @@ class ReadiumReaderAdapter(
                             )
                     factory
                         .createRenditionState(
-                            initialPreferences =
-                                ReflowableWebPreferences(
-                                    fontSize = style.fontSize / 16.0,
-                                    scroll = style.scroll,
-                                    backgroundColor =
-                                        ReadiumColor(
-                                            if (style.darkTheme) 0xFF141A20.toInt()
-                                            else 0xFFF7F6F2.toInt()
-                                        ),
-                                    textColor =
-                                        ReadiumColor(
-                                            if (style.darkTheme) 0xFFF1EEE8.toInt()
-                                            else 0xFF242A31.toInt()
-                                        ),
-                                    overridePublisherColors = true,
-                                    lineHeight = 1.55,
-                                    hyphens = true,
-                                ),
+                            initialPreferences = style.readiumPreferences(),
                             initialLocation = locator?.let(::ReflowableWebGoLocation),
                         )
                         .getOrElse {

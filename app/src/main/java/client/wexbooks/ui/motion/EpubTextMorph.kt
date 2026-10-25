@@ -24,10 +24,11 @@ fun EpubTextMorph(
     scroll: Boolean,
     fontSize: Int,
     themeKey: Boolean,
+    typographyKey: Any? = null,
 ) {
     val root = LocalView.current
     val assets = LocalContext.current.assets
-    LaunchedEffect(engine, reduced, scroll, fontSize, themeKey) {
+    LaunchedEffect(engine, reduced, scroll, fontSize, themeKey, typographyKey) {
         webViews(root).forEach {
             it.evaluateJavascript(
                 "window.__wexStopTextMorph?.(); window.__wexTextFrame = null;",

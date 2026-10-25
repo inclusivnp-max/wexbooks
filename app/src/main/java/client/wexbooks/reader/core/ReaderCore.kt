@@ -22,6 +22,15 @@ data class ReaderStyle(
     val fontSize: Int = 22,
     val scroll: Boolean = false,
     val darkTheme: Boolean = false,
+    val fontFamily: String = "serif",
+    val lineHeight: Double = 1.55,
+    val horizontalMargin: Int = 26,
+    val paragraphSpacing: Double = 0.6,
+    val letterSpacing: Double = 0.0,
+    val firstLineIndent: Boolean = false,
+    val justify: Boolean = false,
+    val backgroundColor: Int? = null,
+    val textColor: Int? = null,
 )
 
 /** Stable document coordinates; renderer-specific data stays opaque to the core. */

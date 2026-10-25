@@ -12,6 +12,22 @@ import androidx.compose.ui.unit.dp
 
 /** Small app-owned outline set, with no dependency on an entire icon catalogue. */
 object WexIcons {
+    val Focus =
+        outline("Focus") {
+            moveTo(8f, 3f)
+            lineTo(3f, 3f)
+            lineTo(3f, 8f)
+            moveTo(16f, 3f)
+            lineTo(21f, 3f)
+            lineTo(21f, 8f)
+            moveTo(3f, 16f)
+            lineTo(3f, 21f)
+            lineTo(8f, 21f)
+            moveTo(21f, 16f)
+            lineTo(21f, 21f)
+            lineTo(16f, 21f)
+        }
+
     val Book =
         outline("Book") {
             moveTo(12f, 5f)

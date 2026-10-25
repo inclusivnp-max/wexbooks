@@ -3,6 +3,9 @@
 package client.wexbooks.ui.reader
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,11 +24,14 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import client.wexbooks.data.ReaderPositionCodec
 import client.wexbooks.data.ReaderPreferences
+import client.wexbooks.data.readingStyle
+import client.wexbooks.data.toggleReaderNight
 import client.wexbooks.reader.BooksViewModel
 import client.wexbooks.reader.EpubReaderSession
 import client.wexbooks.reader.OpenedBook
 import client.wexbooks.reader.QuoteDraft
 import client.wexbooks.reader.core.ReaderPosition
+import client.wexbooks.reader.readiumPreferences
 import client.wexbooks.ui.GlassIconButton
 import client.wexbooks.ui.components.ReaderIconAction
 import client.wexbooks.ui.components.WexDialog
@@ -33,6 +39,7 @@ import client.wexbooks.ui.components.WexIcons
 import client.wexbooks.ui.glass.wexGlass
 import client.wexbooks.ui.motion.EpubTextMorph
 import client.wexbooks.ui.motion.WexAnimatedText
+import client.wexbooks.ui.motion.WexMotion
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.Dispatchers
@@ -44,8 +51,6 @@ import org.json.JSONObject
 import org.readium.navigator.common.Decoration
 import org.readium.navigator.web.reflowable.ReflowableWebDecorationLocation
 import org.readium.navigator.web.reflowable.ReflowableWebRendition
-import org.readium.navigator.web.reflowable.preferences.ReflowableWebPreferences
-import org.readium.r2.navigator.preferences.Color as ReadiumColor
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 
@@ -60,16 +65,19 @@ fun EpubReaderScreen(
     val engine = session.reader as EpubReaderSession
     EpubTextMorph(
         engine,
-        preferences.reduceMotion,
+        preferences.reduceMotion || !preferences.animateText,
         preferences.scroll,
         preferences.fontSize,
         darkTheme,
+        preferences.readingStyle(darkTheme),
     )
     val colors = MaterialTheme.colorScheme
     val backdrop = rememberCanvasBackdrop { drawRect(colors.background) }
     val controller = engine.rendition.controller
     val location = controller?.location?.toLocator()
     val scope = rememberCoroutineScope()
+    val controls = LocalReadingControls.current
+    val controlsVisible = controls?.visible != false
     var sheet by remember { mutableStateOf<String?>(null) }
     var quote by remember { mutableStateOf<QuoteDraft?>(null) }
     var quoteHelp by remember { mutableStateOf(false) }
@@ -104,20 +112,9 @@ fun EpubReaderScreen(
         }
     }
     var bookmarked by remember(controller?.location) { mutableStateOf(false) }
-    val background = colors.background.toArgb()
-    val foreground = colors.onBackground.toArgb()
-    LaunchedEffect(controller, preferences.fontSize, preferences.scroll, background, foreground) {
-        controller?.preferences =
-            ReflowableWebPreferences(
-                fontSize = preferences.fontSize / 16.0,
-                scroll = preferences.scroll,
-                backgroundColor = ReadiumColor(background),
-                textColor = ReadiumColor(foreground),
-                overridePublisherColors = true,
-                lineHeight = 1.55,
-                hyphens = true,
-                minMargins = 1.2,
-            )
+    val readerStyle = preferences.readingStyle(darkTheme)
+    LaunchedEffect(controller, readerStyle) {
+        controller?.preferences = readerStyle.readiumPreferences()
     }
     LaunchedEffect(session) {
         snapshotFlow { engine.rendition.controller?.location?.toLocator() }
@@ -125,124 +122,178 @@ fun EpubReaderScreen(
             .distinctUntilChanged()
             .collect { engine.publish(it) }
     }
-    BackHandler { if (sheet != null) sheet = null else model.closeBook() }
+    SideEffect {
+        if (controls?.reader === engine)
+            controls.blocked = sheet != null || quote != null || quoteHelp
+    }
+    BackHandler {
+        if (sheet != null) sheet = null
+        else if (!controlsVisible) controls?.visible = true else model.closeBook()
+    }
     Box(Modifier.fillMaxSize().background(colors.background).testTag("epub-reader")) {
         Box(Modifier.fillMaxSize()) {
             ReflowableWebRendition(
                 state = engine.rendition,
+                inputListener =
+                    remember(controls, preferences.scroll) {
+                        object : org.readium.navigator.common.InputListener {
+                            override fun onTap(
+                                event: org.readium.navigator.common.TapEvent,
+                                context: org.readium.navigator.common.TapContext,
+                            ) {
+                                if (context.viewport.width.value > 0)
+                                    controls?.tap(
+                                        event.offset.x.value / context.viewport.width.value,
+                                        preferences.scroll,
+                                    )
+                            }
+                        }
+                    },
                 modifier =
                     Modifier.fillMaxSize()
                         .statusBarsPadding()
                         .navigationBarsPadding()
-                        .padding(top = 80.dp, bottom = 106.dp),
+                        .padding(
+                            top = if (controlsVisible) 80.dp else 20.dp,
+                            bottom = if (controlsVisible) 106.dp else 20.dp,
+                        ),
             )
         }
-        Row(
-            Modifier.align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        AnimatedVisibility(
+            controlsVisible,
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+            enter = fadeIn(WexMotion.response(preferences.reduceMotion)),
+            exit = fadeOut(WexMotion.response(preferences.reduceMotion)),
         ) {
-            GlassIconButton(
-                WexIcons.Back,
-                "Назад в библиотеку",
-                backdrop,
-                darkTheme,
-                preferences.reduceTransparency,
+            Row(
+                Modifier.fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                model.closeBook()
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    session.book.title,
-                    color = colors.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 14.sp,
-                )
-                WexAnimatedText(
-                    if (location == null) "Открываем страницы…"
-                    else
-                        "${((location.locations.totalProgression ?: 0.0) * 100).toInt()}% прочитано",
-                    fontSize = 11.sp,
-                    color = colors.onSurfaceVariant,
-                    modifier =
-                        Modifier.testTag(
-                            if (location != null) "reader-ready" else "reader-loading"
-                        ),
-                )
-            }
-            GlassIconButton(
-                WexIcons.Book,
-                "Оглавление",
-                backdrop,
-                darkTheme,
-                preferences.reduceTransparency,
-            ) {
-                sheet = "toc"
-            }
-        }
-        Row(
-            Modifier.align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-                .wexGlass(backdrop, darkTheme, preferences.reduceTransparency, 32.dp)
-                .padding(horizontal = 8.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ReaderIconAction(
-                WexIcons.Back,
-                "Предыдущая страница",
-                enabled = controller?.canMoveBackward == true,
-            ) {
-                scope.launch { controller?.moveBackward() }
-            }
-            TextButton(onClick = { sheet = "type" }, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Aa", fontSize = 21.sp)
-            }
-            ReaderIconAction(
-                WexIcons.Bookmark,
-                "Добавить закладку",
-                enabled = controller != null,
-                selected = bookmarked,
-                modifier = Modifier.testTag("add-bookmark"),
-            ) {
-                model.bookmark(session)
-                bookmarked = true
-            }
-            ReaderIconAction(WexIcons.Notes, "Сохранить выделение", enabled = controller != null) {
-                scope.launch {
-                    val selected = controller?.currentSelection()
-                    if (selected == null || selected.text.isBlank()) quoteHelp = true
-                    else if (selected.text.length <= 12_000) {
-                        val locator = selected.location.toLocator()
-                        quote =
-                            QuoteDraft(
-                                ReaderPosition(
-                                    locator.href.toString(),
-                                    progression = locator.locations.totalProgression ?: 0.0,
-                                    payload = locator.toJSON().toString(),
-                                ),
-                                0,
-                                0,
-                                selected.text,
-                            )
-                    } else quoteHelp = true
+                GlassIconButton(
+                    WexIcons.Back,
+                    "Назад в библиотеку",
+                    backdrop,
+                    darkTheme,
+                    preferences.reduceTransparency,
+                ) {
+                    model.closeBook()
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        session.book.title,
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 14.sp,
+                    )
+                    WexAnimatedText(
+                        if (location == null) "Открываем страницы…"
+                        else
+                            "${((location.locations.totalProgression ?: 0.0) * 100).toInt()}% прочитано",
+                        fontSize = 11.sp,
+                        color = colors.onSurfaceVariant,
+                        modifier =
+                            Modifier.testTag(
+                                if (location != null) "reader-ready" else "reader-loading"
+                            ),
+                    )
+                }
+                GlassIconButton(
+                    WexIcons.Book,
+                    "Оглавление",
+                    backdrop,
+                    darkTheme,
+                    preferences.reduceTransparency,
+                ) {
+                    sheet = "toc"
+                }
+                GlassIconButton(
+                    WexIcons.Focus,
+                    "Скрыть панели",
+                    backdrop,
+                    darkTheme,
+                    preferences.reduceTransparency,
+                ) {
+                    controls?.toggle()
                 }
             }
-            ReaderIconAction(if (darkTheme) WexIcons.Sun else WexIcons.Moon, "Сменить тему") {
-                model.updatePreferences { it.copy(darkTheme = !darkTheme) }
-            }
-            ReaderIconAction(
-                WexIcons.Arrow,
-                "Следующая страница",
-                enabled = controller?.canMoveForward == true,
+        }
+        AnimatedVisibility(
+            controlsVisible,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(WexMotion.response(preferences.reduceMotion)),
+            exit = fadeOut(WexMotion.response(preferences.reduceMotion)),
+        ) {
+            Row(
+                Modifier.navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .wexGlass(backdrop, darkTheme, preferences.reduceTransparency, 32.dp)
+                    .padding(horizontal = 8.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                scope.launch { controller?.moveForward() }
+                ReaderIconAction(
+                    WexIcons.Back,
+                    "Предыдущая страница",
+                    enabled = controller?.canMoveBackward == true,
+                ) {
+                    controls?.previous() ?: run { scope.launch { controller?.moveBackward() } }
+                }
+                TextButton(
+                    onClick = { sheet = "type" },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("Aa", fontSize = 21.sp)
+                }
+                ReaderIconAction(
+                    WexIcons.Bookmark,
+                    "Добавить закладку",
+                    enabled = controller != null,
+                    selected = bookmarked,
+                    modifier = Modifier.testTag("add-bookmark"),
+                ) {
+                    model.bookmark(session)
+                    bookmarked = true
+                }
+                ReaderIconAction(
+                    WexIcons.Notes,
+                    "Сохранить выделение",
+                    enabled = controller != null,
+                ) {
+                    scope.launch {
+                        val selected = controller?.currentSelection()
+                        if (selected == null || selected.text.isBlank()) quoteHelp = true
+                        else if (selected.text.length <= 12_000) {
+                            val locator = selected.location.toLocator()
+                            quote =
+                                QuoteDraft(
+                                    ReaderPosition(
+                                        locator.href.toString(),
+                                        progression = locator.locations.totalProgression ?: 0.0,
+                                        payload = locator.toJSON().toString(),
+                                    ),
+                                    0,
+                                    0,
+                                    selected.text,
+                                )
+                        } else quoteHelp = true
+                    }
+                }
+                ReaderIconAction(if (darkTheme) WexIcons.Sun else WexIcons.Moon, "Сменить тему") {
+                    model.updatePreferences { it.toggleReaderNight(darkTheme) }
+                }
+                ReaderIconAction(
+                    WexIcons.Arrow,
+                    "Следующая страница",
+                    enabled = controller?.canMoveForward == true,
+                ) {
+                    controls?.next() ?: run { scope.launch { controller?.moveForward() } }
+                }
             }
         }
+        ReaderBrightnessEdge(preferences)
         quote?.let { draft ->
             QuoteEditor(draft.text, onDismiss = { quote = null }) { note ->
                 model.saveQuote(session, draft, note)
@@ -266,57 +317,9 @@ fun EpubReaderScreen(
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 containerColor = colors.surface,
             ) {
+                ReadingDialogWindowEffects()
                 if (sheet == "type") {
-                    Column(
-                        Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp)
-                    ) {
-                        Text("Как вам удобно", fontSize = 24.sp)
-                        Spacer(Modifier.height(24.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    model.updatePreferences {
-                                        it.copy(fontSize = (it.fontSize - 2).coerceAtLeast(16))
-                                    }
-                                },
-                                modifier = Modifier.testTag("font-decrease"),
-                            ) {
-                                Text("А−", fontSize = 20.sp)
-                            }
-                            WexAnimatedText(
-                                "${preferences.fontSize}",
-                                Modifier.testTag("font-size"),
-                                fontSize = 20.sp,
-                            )
-                            TextButton(
-                                onClick = {
-                                    model.updatePreferences {
-                                        it.copy(fontSize = (it.fontSize + 2).coerceAtMost(34))
-                                    }
-                                },
-                                modifier = Modifier.testTag("font-increase"),
-                            ) {
-                                Text("А+", fontSize = 24.sp)
-                            }
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("Вертикальная прокрутка", Modifier.weight(1f))
-                            Switch(
-                                preferences.scroll,
-                                onCheckedChange = { checked ->
-                                    model.updatePreferences { it.copy(scroll = checked) }
-                                },
-                                modifier = Modifier.testTag("reading-scroll"),
-                            )
-                        }
-                    }
+                    ReadingComfortSheet(preferences, model, true) { sheet = null }
                 } else {
                     Text(
                         "Оглавление",

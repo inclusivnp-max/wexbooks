@@ -18,6 +18,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // The isolated Dev host stays awake between USB test runs; release follows reader settings.
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (savedInstanceState == null) receive(intent)
         setContent {
             val pending by incomingUris.collectAsState()
@@ -37,6 +40,33 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         receive(intent)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean =
+        consumeVolumeKey(event) || super.onKeyDown(keyCode, event)
+
+    override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent): Boolean =
+        consumeVolumeKey(event) || super.onKeyUp(keyCode, event)
+
+    private fun consumeVolumeKey(event: android.view.KeyEvent): Boolean {
+        val volume =
+            event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN ||
+                event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
+        if (volume) {
+            val model =
+                androidx.lifecycle
+                    .ViewModelProvider(this)[client.wexbooks.reader.BooksViewModel::class.java]
+            if (
+                model.opened.value != null &&
+                    model.preferences.value?.volumePaging == true &&
+                    !model.readerInputBlocked
+            ) {
+                if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0)
+                    model.volumePage(event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN)
+                return true
+            }
+        }
+        return false
     }
 
     override fun onStop() {

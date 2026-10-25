@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -112,6 +111,9 @@ fun NativePageContent(
     onLink: (String) -> Unit,
     onImage: (String) -> Unit,
     motion: client.wexbooks.ui.motion.NativeTextMorphState? = null,
+    onShowControls: () -> Unit = {},
+    onPageTap: (Float) -> Unit = {},
+    onPageSwipe: (Boolean) -> Unit = {},
 ) {
     val document = engine.document
     val colors = MaterialTheme.colorScheme
@@ -129,6 +131,9 @@ fun NativePageContent(
     val currentSelection by rememberUpdatedState(selection)
     val select by rememberUpdatedState(onSelection)
     val link by rememberUpdatedState(onLink)
+    val tap by rememberUpdatedState(onPageTap)
+    val showControls by rememberUpdatedState(onShowControls)
+    val swipe by rememberUpdatedState(onPageSwipe)
     Box(Modifier.fillMaxSize()) {
         Canvas(
             Modifier.fillMaxSize()
@@ -138,6 +143,12 @@ fun NativePageContent(
                     stateDescription =
                         if (motion?.isRunning == true) "Переход текста" else "Страница"
                     customActions = buildList {
+                        add(
+                            CustomAccessibilityAction("Показать панели чтения") {
+                                showControls()
+                                true
+                            }
+                        )
                         page.fragments.firstOrNull()?.let { first ->
                             add(
                                 CustomAccessibilityAction("Выделить видимый абзац") {
@@ -174,27 +185,82 @@ fun NativePageContent(
                 .pointerInput(page) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
-                        val hold = awaitLongPressOrCancellation(down.id)
+                        var pointer = down
+                        var swiping = false
+                        var cancelled = false
+                        val completed =
+                            withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val next = event.changes.firstOrNull { it.id == down.id }
+                                    if (next == null || next.isConsumed || event.changes.size > 1) {
+                                        cancelled = true
+                                        break
+                                    }
+                                    pointer = next
+                                    if (!pointer.pressed) break
+                                    if (
+                                        (pointer.position - down.position).getDistance() >
+                                            viewConfiguration.touchSlop
+                                    ) {
+                                        swiping = true
+                                        break
+                                    }
+                                }
+                                true
+                            }
+                        val hold = if (completed == null && !cancelled) pointer else null
                         if (hold == null) {
-                            val up = currentEvent.changes.firstOrNull { it.id == down.id }
+                            if (swiping && !cancelled) {
+                                pointer.consume()
+                                while (pointer.pressed) {
+                                    val event = awaitPointerEvent()
+                                    val next =
+                                        event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (next.isConsumed || event.changes.size > 1) {
+                                        cancelled = true
+                                        break
+                                    }
+                                    pointer = next
+                                    pointer.consume()
+                                }
+                            }
+                            val up = pointer.takeUnless { it.pressed || cancelled }
+                            val delta = pointer.position - down.position
                             if (
+                                swiping &&
+                                    up != null &&
+                                    kotlin.math.abs(delta.x) > 48.dp.toPx() &&
+                                    kotlin.math.abs(delta.x) > kotlin.math.abs(delta.y) * 1.4f
+                            ) {
+                                if (currentSelection == null) swipe(delta.x < 0)
+                            } else if (
                                 up != null &&
                                     up.changedToUp() &&
                                     (up.position - down.position).getDistance() <=
                                         viewConfiguration.touchSlop
                             ) {
                                 if (currentSelection != null) select(null)
-                                else
-                                    page.hit(up.position, document)?.let { anchor ->
-                                        document.blocks[anchor.block]
-                                            .marks
-                                            .firstOrNull {
-                                                it.kind == MarkKind.Link &&
-                                                    anchor.offset in it.start until it.end
-                                            }
-                                            ?.target
-                                            ?.let(link)
-                                    }
+                                else {
+                                    val target =
+                                        page.hit(up.position, document)?.let { anchor ->
+                                            document.blocks[anchor.block]
+                                                .marks
+                                                .firstOrNull {
+                                                    it.kind == MarkKind.Link &&
+                                                        anchor.offset in it.start until it.end
+                                                }
+                                                ?.target
+                                        }
+                                    if (target != null) link(target)
+                                    else
+                                        tap(
+                                            (up.position.x / size.width.coerceAtLeast(1)).coerceIn(
+                                                0f,
+                                                1f,
+                                            )
+                                        )
+                                }
                                 up.consume()
                             }
                         } else {
@@ -345,6 +411,7 @@ fun NativeImageViewer(engine: NativeReaderSession, id: String, onDismiss: () -> 
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        ReadingDialogWindowEffects()
         Box(
             Modifier.fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)

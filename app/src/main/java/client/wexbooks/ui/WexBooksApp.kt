@@ -143,183 +143,199 @@ fun WexBooksApp(
         WexBooksTheme(darkTheme) {
             val colors = MaterialTheme.colorScheme
             val backdrop = rememberLayerBackdrop()
-            Box(Modifier.fillMaxSize().background(colors.background)) {
-                AnimatedContent(
-                    targetState = opened,
-                    modifier = Modifier.fillMaxSize(),
-                    contentKey = { it?.book?.id },
-                    transitionSpec = {
-                        WexMotion.pageTransition(reduceMotion, targetState != null).using(null)
-                    },
-                    label = "open publication",
-                ) { session ->
-                    if (session != null) {
-                        when (session.reader) {
-                            is client.wexbooks.reader.EpubReaderSession ->
-                                client.wexbooks.ui.reader.EpubReaderScreen(
-                                    session,
-                                    prefs,
-                                    darkTheme,
-                                    model,
-                                )
-                            is client.wexbooks.reader.nativeengine.NativeReaderSession ->
-                                client.wexbooks.ui.reader.NativeReaderScreen(
-                                    session,
-                                    prefs,
-                                    darkTheme,
-                                    model,
-                                )
-                        }
-                    } else {
-                        val books by model.books.collectAsStateWithLifecycle()
-                        val bookmarks by model.bookmarks.collectAsStateWithLifecycle()
-                        val annotations by model.annotations.collectAsStateWithLifecycle()
-                        Box(Modifier.fillMaxSize()) {
-                            Column(
-                                Modifier.fillMaxSize()
-                                    .layerBackdrop(backdrop)
-                                    .background(colors.background)
-                                    .statusBarsPadding()
-                                    .navigationBarsPadding()
-                                    .padding(start = 24.dp, end = 24.dp, top = 20.dp)
-                            ) {
-                                Row(
-                                    Modifier.fillMaxWidth().height(52.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        "WEXBOOKS",
-                                        fontSize = 12.sp,
-                                        letterSpacing = 3.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.onSurfaceVariant,
-                                    )
+            client.wexbooks.ui.reader.ReadingEnvironment(opened, prefs, darkTheme, model) {
+                readingDark ->
+                Box(Modifier.fillMaxSize().background(colors.background)) {
+                    AnimatedContent(
+                        targetState = opened,
+                        modifier = Modifier.fillMaxSize(),
+                        contentKey = { it?.book?.id },
+                        transitionSpec = {
+                            WexMotion.pageTransition(reduceMotion, targetState != null).using(null)
+                        },
+                        label = "open publication",
+                    ) { session ->
+                        if (session != null) {
+                            client.wexbooks.ui.reader.ReadingPageTheme(prefs, darkTheme) {
+                                readingDark ->
+                                when (session.reader) {
+                                    is client.wexbooks.reader.EpubReaderSession ->
+                                        client.wexbooks.ui.reader.EpubReaderScreen(
+                                            session,
+                                            prefs,
+                                            readingDark,
+                                            model,
+                                        )
+                                    is client.wexbooks.reader.nativeengine.NativeReaderSession ->
+                                        client.wexbooks.ui.reader.NativeReaderScreen(
+                                            session,
+                                            prefs,
+                                            readingDark,
+                                            model,
+                                        )
                                 }
-                                Spacer(Modifier.height(28.dp))
-                                AnimatedContent(
-                                    targetState = tab,
-                                    modifier = Modifier.fillMaxWidth().weight(1f),
-                                    transitionSpec = {
-                                        WexMotion.pageTransition(
-                                                reduceMotion,
-                                                targetState > initialState,
-                                            )
-                                            .using(null)
-                                    },
-                                    label = "library destinations",
-                                ) { currentTab ->
-                                    when (currentTab) {
-                                        0 ->
-                                            client.wexbooks.ui.library.BookLibraryScreen(
-                                                books,
-                                                importing,
-                                                onImport,
-                                                { model.openBook(it.id) },
-                                                model::deleteBook,
-                                            ) {
-                                                LibraryContent(
-                                                    { model.openSample() },
-                                                    onImport,
-                                                    importing == null,
+                            }
+                        } else {
+                            val books by model.books.collectAsStateWithLifecycle()
+                            val bookmarks by model.bookmarks.collectAsStateWithLifecycle()
+                            val annotations by model.annotations.collectAsStateWithLifecycle()
+                            Box(Modifier.fillMaxSize()) {
+                                Column(
+                                    Modifier.fillMaxSize()
+                                        .layerBackdrop(backdrop)
+                                        .background(colors.background)
+                                        .statusBarsPadding()
+                                        .navigationBarsPadding()
+                                        .padding(start = 24.dp, end = 24.dp, top = 20.dp)
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().height(52.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            "WEXBOOKS",
+                                            fontSize = 12.sp,
+                                            letterSpacing = 3.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.onSurfaceVariant,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(28.dp))
+                                    AnimatedContent(
+                                        targetState = tab,
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        transitionSpec = {
+                                            WexMotion.pageTransition(
+                                                    reduceMotion,
+                                                    targetState > initialState,
                                                 )
-                                            }
-                                        1 ->
-                                            if (bookmarks.isEmpty() && annotations.isEmpty()) {
+                                                .using(null)
+                                        },
+                                        label = "library destinations",
+                                    ) { currentTab ->
+                                        when (currentTab) {
+                                            0 ->
+                                                client.wexbooks.ui.library.BookLibraryScreen(
+                                                    books,
+                                                    importing,
+                                                    onImport,
+                                                    { model.openBook(it.id) },
+                                                    model::deleteBook,
+                                                ) {
+                                                    LibraryContent(
+                                                        { model.openSample() },
+                                                        onImport,
+                                                        importing == null,
+                                                    )
+                                                }
+                                            1 ->
+                                                if (bookmarks.isEmpty() && annotations.isEmpty()) {
+                                                    Column(
+                                                        Modifier.fillMaxSize()
+                                                            .verticalScroll(rememberScrollState())
+                                                            .padding(bottom = 132.dp)
+                                                    ) {
+                                                        NotesContent()
+                                                    }
+                                                } else {
+                                                    client.wexbooks.ui.library.SavedBookmarksScreen(
+                                                        bookmarks,
+                                                        {
+                                                            model.openBook(
+                                                                it.bookId,
+                                                                it.locatorJson,
+                                                            )
+                                                        },
+                                                        model::deleteBookmark,
+                                                        annotations,
+                                                        {
+                                                            model.openBook(
+                                                                it.bookId,
+                                                                it.locatorJson,
+                                                            )
+                                                        },
+                                                        model::deleteAnnotation,
+                                                    )
+                                                }
+                                            else ->
                                                 Column(
                                                     Modifier.fillMaxSize()
                                                         .verticalScroll(rememberScrollState())
                                                         .padding(bottom = 132.dp)
                                                 ) {
-                                                    NotesContent()
+                                                    AppearanceContent(
+                                                        darkTheme,
+                                                        reduceTransparency,
+                                                        reduceMotion,
+                                                        { value ->
+                                                            model.updatePreferences {
+                                                                it.copy(darkTheme = value)
+                                                            }
+                                                        },
+                                                        { value ->
+                                                            model.updatePreferences {
+                                                                it.copy(reduceTransparency = value)
+                                                            }
+                                                        },
+                                                        { value ->
+                                                            model.updatePreferences {
+                                                                it.copy(reduceMotion = value)
+                                                            }
+                                                        },
+                                                    )
                                                 }
-                                            } else {
-                                                client.wexbooks.ui.library.SavedBookmarksScreen(
-                                                    bookmarks,
-                                                    { model.openBook(it.bookId, it.locatorJson) },
-                                                    model::deleteBookmark,
-                                                    annotations,
-                                                    { model.openBook(it.bookId, it.locatorJson) },
-                                                    model::deleteAnnotation,
-                                                )
-                                            }
-                                        else ->
-                                            Column(
-                                                Modifier.fillMaxSize()
-                                                    .verticalScroll(rememberScrollState())
-                                                    .padding(bottom = 132.dp)
-                                            ) {
-                                                AppearanceContent(
-                                                    darkTheme,
-                                                    reduceTransparency,
-                                                    reduceMotion,
-                                                    { value ->
-                                                        model.updatePreferences {
-                                                            it.copy(darkTheme = value)
-                                                        }
-                                                    },
-                                                    { value ->
-                                                        model.updatePreferences {
-                                                            it.copy(reduceTransparency = value)
-                                                        }
-                                                    },
-                                                    { value ->
-                                                        model.updatePreferences {
-                                                            it.copy(reduceMotion = value)
-                                                        }
-                                                    },
-                                                )
-                                            }
+                                        }
                                     }
                                 }
+                                GlassIconButton(
+                                    if (darkTheme) WexIcons.Sun else WexIcons.Moon,
+                                    "Сменить тему",
+                                    backdrop,
+                                    darkTheme,
+                                    reduceTransparency,
+                                    Modifier.align(Alignment.TopEnd)
+                                        .statusBarsPadding()
+                                        .padding(top = 20.dp, end = 24.dp),
+                                ) {
+                                    model.updatePreferences { it.copy(darkTheme = !darkTheme) }
+                                }
+                                GlassNavigation(
+                                    tab,
+                                    { tab = it },
+                                    backdrop,
+                                    darkTheme,
+                                    reduceTransparency,
+                                    Modifier.align(Alignment.BottomCenter)
+                                        .navigationBarsPadding()
+                                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                                )
                             }
-                            GlassIconButton(
-                                if (darkTheme) WexIcons.Sun else WexIcons.Moon,
-                                "Сменить тему",
-                                backdrop,
-                                darkTheme,
-                                reduceTransparency,
-                                Modifier.align(Alignment.TopEnd)
-                                    .statusBarsPadding()
-                                    .padding(top = 20.dp, end = 24.dp),
-                            ) {
-                                model.updatePreferences { it.copy(darkTheme = !darkTheme) }
-                            }
-                            GlassNavigation(
-                                tab,
-                                { tab = it },
-                                backdrop,
-                                darkTheme,
-                                reduceTransparency,
-                                Modifier.align(Alignment.BottomCenter)
-                                    .navigationBarsPadding()
-                                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                            )
                         }
                     }
-                }
-                if (opening) {
-                    Box(
-                        Modifier.fillMaxSize().background(colors.background.copy(alpha = 0.8f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Text(
-                                "Открываем книгу…",
-                                Modifier.padding(top = 16.dp),
-                                color = colors.onSurfaceVariant,
-                            )
-                            TextButton(onClick = model::closeBook) { Text("Отмена") }
+                    if (opening) {
+                        Box(
+                            Modifier.fillMaxSize().background(colors.background.copy(alpha = 0.8f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator()
+                                Text(
+                                    "Открываем книгу…",
+                                    Modifier.padding(top = 16.dp),
+                                    color = colors.onSurfaceVariant,
+                                )
+                                TextButton(onClick = model::closeBook) { Text("Отмена") }
+                            }
                         }
                     }
-                }
-                message?.let { text ->
-                    WexDialog(
-                        title = "Открытие книги",
-                        onDismissRequest = model::dismissMessage,
-                        confirmLabel = "Понятно",
-                    ) {
-                        Text(text)
+                    message?.let { text ->
+                        WexDialog(
+                            title = "Открытие книги",
+                            onDismissRequest = model::dismissMessage,
+                            confirmLabel = "Понятно",
+                        ) {
+                            Text(text)
+                        }
                     }
                 }
             }

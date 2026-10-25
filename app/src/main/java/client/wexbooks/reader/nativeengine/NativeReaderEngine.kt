@@ -106,10 +106,26 @@ class NativeReaderSession(
     private var request: Job? = null
     private var prefetch: Job? = null
     private var generation = 0L
+    private var geometryPending = false
+
+    fun prepareReflow() {
+        if (closed.get()) return
+        geometryPending = true
+        _render.value = _render.value.copy(loading = true)
+    }
+
+    private suspend fun awaitGeometry(): Boolean {
+        while (geometryPending && !closed.get()) delay(16)
+        return !closed.get()
+    }
 
     suspend fun configure(key: LayoutKey, resolver: FontFamily.Resolver) {
         if (closed.get() || key.width < 24 || key.height < 24) return
-        if (paginator?.key == key) return
+        if (paginator?.key == key) {
+            geometryPending = false
+            _render.value = _render.value.copy(loading = false)
+            return
+        }
         request?.cancelAndJoin()
         prefetch?.cancelAndJoin()
         paginator?.let { old -> withContext(worker) { old.clear() } }
@@ -118,11 +134,13 @@ class NativeReaderSession(
     }
 
     override suspend fun forward() {
+        if (!awaitGeometry()) return
         val page = _render.value.page ?: return
         if (page.hasNext) requestPage(page.end, false)
     }
 
     override suspend fun backward() {
+        if (!awaitGeometry()) return
         val page = _render.value.page ?: return
         if (page.hasPrevious) requestPage(page.start, true)
     }
@@ -148,6 +166,7 @@ class NativeReaderSession(
                         if (backwards) layout.pageBefore(anchor) else layout.pageAt(anchor)
                     }
                 if (generation != token || closed.get()) return@launch
+                geometryPending = false
                 _render.value = NativeRenderState(page, loading = false, forward = !backwards)
                 _position.value =
                     if (preserveAnchor) document.position(anchor.block, anchor.offset)
@@ -165,6 +184,7 @@ class NativeReaderSession(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                geometryPending = false
                 _render.value =
                     _render.value.copy(
                         loading = false,

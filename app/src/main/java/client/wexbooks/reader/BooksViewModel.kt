@@ -8,6 +8,7 @@ import client.wexbooks.WexBooksApplication
 import client.wexbooks.data.BookEntity
 import client.wexbooks.data.ReaderPositionCodec
 import client.wexbooks.data.ReaderPreferences
+import client.wexbooks.data.readingStyle
 import client.wexbooks.reader.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -69,6 +70,21 @@ class BooksViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 delay(100) // No 60/120Hz Room writes when a scrolling renderer reports every frame.
             }
+        }
+    }
+
+    var readerInputBlocked: Boolean = false
+        private set
+
+    fun blockReaderInput(owner: ReaderSession, blocked: Boolean) {
+        if (_opened.value?.reader === owner) readerInputBlocked = blocked
+    }
+
+    fun volumePage(forward: Boolean) {
+        val session = _opened.value ?: return
+        if (readerInputBlocked) return
+        viewModelScope.launch {
+            if (forward) session.reader.forward() else session.reader.backward()
         }
     }
 
@@ -150,13 +166,10 @@ class BooksViewModel(application: Application) : AndroidViewModel(application) {
                             book.author,
                         ),
                         ReaderPositionCodec.decode(requestedLocator ?: book.locatorJson),
-                        ReaderStyle(
-                            prefs.fontSize,
-                            prefs.scroll,
-                            prefs.darkTheme
-                                ?: (getApplication<Application>().resources.configuration.uiMode and
-                                    android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
-                                    android.content.res.Configuration.UI_MODE_NIGHT_YES),
+                        prefs.readingStyle(
+                            getApplication<Application>().resources.configuration.uiMode and
+                                android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+                                android.content.res.Configuration.UI_MODE_NIGHT_YES
                         ),
                     )
                 ensureActive()

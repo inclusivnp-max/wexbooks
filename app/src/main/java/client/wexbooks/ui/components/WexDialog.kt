@@ -70,6 +70,7 @@ fun WexDialog(
         properties =
             DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
+        client.wexbooks.ui.reader.ReadingDialogWindowEffects()
         BoxWithConstraints(
             Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(20.dp),
             contentAlignment = Alignment.Center,

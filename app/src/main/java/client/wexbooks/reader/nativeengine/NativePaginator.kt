@@ -24,6 +24,12 @@ data class LayoutKey(
     val density: Float,
     val fontScale: Float,
     val direction: LayoutDirection,
+    val fontFamily: String = "serif",
+    val lineHeight: Int = 155,
+    val paragraphSpacing: Int = 60,
+    val letterSpacing: Int = 0,
+    val firstLineIndent: Boolean = false,
+    val justify: Boolean = false,
 )
 
 data class NativeFragment(
@@ -69,7 +75,7 @@ class NativePaginator(
         }
     private val previous = BoundedCache<Pair<Int, Int>, ReaderPosition>(4096, 131_072) { 32 }
     private val gap: Float
-        get() = key.fontSize * key.density * key.fontScale * 0.6f
+        get() = key.fontSize * key.density * key.fontScale * (key.paragraphSpacing / 100f)
 
     fun stats() = pages.stats()
 
@@ -268,9 +274,27 @@ class NativePaginator(
             .measure(
                 text,
                 TextStyle(
-                    fontFamily = FontFamily.Serif,
+                    fontFamily =
+                        when (key.fontFamily) {
+                            "sans-serif" -> FontFamily.SansSerif
+                            "monospace" -> FontFamily.Monospace
+                            else -> FontFamily.Serif
+                        },
                     fontSize = font.sp,
-                    lineHeight = (font * 1.55f).sp,
+                    lineHeight = (font * key.lineHeight / 100f).sp,
+                    letterSpacing = (font * key.letterSpacing / 100f).sp,
+                    textAlign =
+                        if (key.justify && block.kind == BlockKind.Paragraph)
+                            androidx.compose.ui.text.style.TextAlign.Justify
+                        else androidx.compose.ui.text.style.TextAlign.Start,
+                    textIndent =
+                        if (
+                            key.firstLineIndent &&
+                                block.kind == BlockKind.Paragraph &&
+                                !block.continuation
+                        )
+                            androidx.compose.ui.text.style.TextIndent(firstLine = (font * 1.2f).sp)
+                        else androidx.compose.ui.text.style.TextIndent.None,
                     fontWeight =
                         if (block.kind == BlockKind.Heading) FontWeight.Medium
                         else FontWeight.Normal,
