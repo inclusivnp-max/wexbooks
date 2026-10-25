@@ -19,3 +19,7 @@ local.properties
 /keystore/
 *.jks
 *.keystore
+
+# Local IDE state and Kotlin caches
+/.idea/
+/.kotlin/
