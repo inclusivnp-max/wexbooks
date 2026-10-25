@@ -40,3 +40,27 @@ python3 tools/check_performance.py benchmark/results/baseline.json benchmark/res
 Проверка завершилась exit 0. Пороги: старт не более +15%; CPU P95 EPUB не более +15%; overrun P95 EPUB не более +2 мс; первоначальный native CPU P95 не более 16.7 мс.
 
 Компактные исходные измерения сохранены в `benchmark/results/`. Полные JSON и Perfetto traces — в исключённом из Git `benchmark/build/outputs/connected_android_test_additional_output/`.
+
+## Этап сносок, цитат и подмены букв — 25 октября
+
+Сравнение с предыдущим рабочим ReaderCore (`pixel-20261025.json`), а не с экспериментально медленным вариантом. Исходники текущего приложения: `ad00934`. Команда `ANDROID_SERIAL=47101FDAS0028Q ./gradlew :benchmark:connectedBenchmarkAndroidTest` завершилась `BUILD SUCCESSFUL in 3m 5s`, exit 0: три сценария без ошибок и пропусков. Те же 5 стартов и 3 × 12 перелистываний, CompilationMode.None.
+
+| Показатель | ReaderCore MVP | Чтение + text morph |
+|---|---:|---:|
+| Библиотека, TTID median | 276.69 мс | 289.21 мс |
+| EPUB, CPU frame P95 | 11.92 мс | 12.88 мс |
+| EPUB, frameOverrun P95 | 4.63 мс | 0.34 мс |
+| Native TXT, CPU frame P95 | 15.33 мс | 12.27 мс |
+| Native TXT, frameOverrun P95 | 5.79 мс | 2.53 мс |
+
+Старт в этой выборке вырос примерно на 4.5%, CPU P95 EPUB — на 8.1%; обе величины внутри заранее заданного допуска +15%. Native CPU P95 снизился примерно на 20%; хвосты overrun в обоих сценариях стали меньше. Это измерения одного Pixel, не универсальное обещание отсутствия любых просадок и не доказательство 120 FPS.
+
+Первый вариант EPUB с отдельными DOM/WAAPI-элементами букв дал CPU P95 106.75 мс и был отброшен. Текущий вариант использует один Canvas-overlay и растры viewport; никаких сотен анимируемых DOM-слоёв. На Pixel подготовка координат и растра отдельно наблюдалась около 8–12 мс один раз на страницу, не на каждый кадр.
+
+В подготовке замеров оглавление активируется accessibility-действием целевого приложения: входящие heads-up уведомления раньше перехватывали физический тап. Измеряемые перелистывания по-прежнему выполняются обычными касаниями. Уведомления и другие настройки телефона не изменялись.
+
+```bash
+python3 tools/check_performance.py benchmark/results/pixel-20261025.json benchmark/results/pixel-20261025-reading.json
+```
+
+Все шесть порогов — PASS, exit 0. Добавлены относительные проверки native CPU/overrun к предыдущей версии; абсолютный native бюджет 16.7 мс сохранён. Короткий диагностический запуск допускает `-Pandroid.testInstrumentationRunnerArguments.pageIterations=1`; итоговые числа выше взяты только из полного запуска с тремя повторами.

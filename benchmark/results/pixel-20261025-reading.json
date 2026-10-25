@@ -1,0 +1,88 @@
+{
+  "device": "Pixel 9 Pro XL",
+  "sdk": 37,
+  "date": "2026-10-25",
+  "sourceCommit": "ad00934",
+  "mode": "profileable non-debuggable, release-like, CompilationMode.None",
+  "benchmarks": [
+    {
+      "name": "epubPageTurns",
+      "metrics": {
+        "frameCount": {
+          "minimum": 566.0,
+          "maximum": 567.0,
+          "median": 567.0,
+          "coefficientOfVariation": 0.0010188534162169866,
+          "runs": [
+            567.0,
+            567.0,
+            566.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 5.089742,
+          "P90": 7.785612400000003,
+          "P95": 12.876757849999999,
+          "P99": 21.464171639999993
+        },
+        "frameOverrunMs": {
+          "P50": -9.963799999999999,
+          "P90": -4.517540199999992,
+          "P95": 0.33565779999998924,
+          "P99": 10.70858382
+        }
+      }
+    },
+    {
+      "name": "nativePageTurns",
+      "metrics": {
+        "frameCount": {
+          "minimum": 78.0,
+          "maximum": 91.0,
+          "median": 85.0,
+          "coefficientOfVariation": 0.07684732793678399,
+          "runs": [
+            85.0,
+            91.0,
+            78.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 5.914448999999999,
+          "P90": 9.399328900000004,
+          "P95": 12.2695193,
+          "P99": 13.782661439999998
+        },
+        "frameOverrunMs": {
+          "P50": -8.309931,
+          "P90": -0.19962899999999972,
+          "P95": 2.5322188,
+          "P99": 7.87707569
+        }
+      }
+    },
+    {
+      "name": "libraryColdStart",
+      "metrics": {
+        "timeToInitialDisplayMs": {
+          "minimum": 278.678589,
+          "maximum": 369.325643,
+          "median": 289.213094,
+          "coefficientOfVariation": 0.12050988740925384,
+          "runs": [
+            289.213094,
+            302.739095,
+            369.325643,
+            278.678589,
+            286.782796
+          ]
+        }
+      },
+      "sampledMetrics": {}
+    }
+  ]
+}
