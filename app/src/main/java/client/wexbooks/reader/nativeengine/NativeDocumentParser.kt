@@ -18,6 +18,7 @@ import javax.xml.parsers.SAXParserFactory
 import org.xml.sax.Attributes
 import org.xml.sax.InputSource
 import org.xml.sax.SAXException
+import org.xml.sax.SAXParseException
 import org.xml.sax.ext.DefaultHandler2
 
 /** Streaming input with explicit document/block limits; never called on the UI thread. */
@@ -26,6 +27,7 @@ object NativeDocumentParser {
     const val MAX_BLOCK_CHARACTERS = 4096
     const val MAX_IMAGE_BYTES = 2 * 1024 * 1024
     const val MAX_TOTAL_IMAGE_BYTES = 8 * 1024 * 1024
+    const val MAX_IMAGES = 1024
     const val MAX_SOURCE_BYTES = 32L * 1024 * 1024
 
     fun parse(file: File, format: BookFormat, fallbackTitle: String): NativeDocument {
@@ -151,11 +153,11 @@ object NativeDocumentParser {
                 private val authorParts = ArrayList<String>()
 
                 override fun startDTD(name: String?, publicId: String?, systemId: String?) {
-                    throw SAXException("DTD is not part of the text reader")
+                    throw Fb2ReadFailure("FB2 содержит внешние определения XML (DTD).")
                 }
 
                 override fun resolveEntity(publicId: String?, systemId: String?): InputSource {
-                    throw SAXException("External entity")
+                    throw Fb2ReadFailure("FB2 содержит ссылки на внешние XML-данные.")
                 }
 
                 override fun startElement(
@@ -167,8 +169,10 @@ object NativeDocumentParser {
                     val name =
                         localName?.takeIf { it.isNotBlank() } ?: qName.orEmpty().substringAfter(':')
                     path += name
-                    if (path.size > 128 || (path.size == 1 && name != "FictionBook"))
-                        throw SAXException("Invalid FB2 structure")
+                    if (path.size > 128)
+                        throw Fb2ReadFailure("В FB2 слишком глубокая структура разделов.")
+                    if (path.size == 1 && name != "FictionBook")
+                        throw Fb2ReadFailure("Выбранный XML не является книгой FB2.")
                     if (name == "body") {
                         inBody = true
                         notesBody =
@@ -233,13 +237,14 @@ object NativeDocumentParser {
                     if (path.lastOrNull() == "binary") {
                         binary?.let {
                             if (it.length.toLong() + length > MAX_IMAGE_BYTES * 4L / 3 + 16384)
-                                throw SAXException("Image limit exceeded")
+                                throw Fb2ReadFailure("В FB2 есть иллюстрация размером больше 2 МБ.")
                             it.append(ch, start, length)
                         }
                         return
                     }
                     total += length
-                    if (total > MAX_CHARACTERS) throw SAXException("Character limit exceeded")
+                    if (total > MAX_CHARACTERS)
+                        throw Fb2ReadFailure("В FB2 больше 4 млн символов текста.")
                     paragraph?.append(ch, start, length)
                     capturedMeta?.append(ch, start, length)
                 }
@@ -262,14 +267,21 @@ object NativeDocumentParser {
                     if (name == "binary") {
                         val id = binaryId
                         binary?.let { encoded ->
-                            val bytes = Base64.getMimeDecoder().decode(encoded.toString())
+                            val bytes =
+                                try {
+                                    Base64.getMimeDecoder().decode(encoded.toString())
+                                } catch (_: IllegalArgumentException) {
+                                    throw Fb2ReadFailure("В FB2 повреждены данные иллюстрации.")
+                                }
                             binaryBytes += bytes.size
-                            if (
-                                bytes.size > MAX_IMAGE_BYTES ||
-                                    binaryBytes > MAX_TOTAL_IMAGE_BYTES ||
-                                    builder.images.size >= 64
-                            )
-                                throw SAXException("Image limit exceeded")
+                            if (bytes.size > MAX_IMAGE_BYTES)
+                                throw Fb2ReadFailure("В FB2 есть иллюстрация размером больше 2 МБ.")
+                            if (binaryBytes > MAX_TOTAL_IMAGE_BYTES)
+                                throw Fb2ReadFailure(
+                                    "Иллюстрации FB2 занимают больше 8 МБ суммарно."
+                                )
+                            if (builder.images.size >= MAX_IMAGES)
+                                throw Fb2ReadFailure("В FB2 больше $MAX_IMAGES иллюстраций.")
                             if (!id.isNullOrBlank())
                                 NativeImageBounds.read(bytes)?.let { (w, h) ->
                                     builder.images[id] = NativeImage(bytes, w, h)
@@ -322,12 +334,22 @@ object NativeDocumentParser {
             reader.setProperty("http://xml.org/sax/properties/lexical-handler", handler)
             reader.parse(InputSource(input))
         } catch (e: Exception) {
-            throw BookImportException(
-                "Проверьте структуру FB2 и размер текста (до 4 млн символов)."
-            )
+            // Android SAX can wrap a handler failure. Preserve its category, never label
+            // every XML/image error as an excessive text size.
+            val causes = generateSequence(e as Throwable) { it.cause }.take(8).toList()
+            causes.filterIsInstance<BookImportException>().firstOrNull()?.let { throw it }
+            val reason =
+                causes.filterIsInstance<Fb2ReadFailure>().firstOrNull()?.message
+                    ?: causes.filterIsInstance<SAXParseException>().firstOrNull()?.let {
+                        "Ошибка XML в FB2: строка ${it.lineNumber}, столбец ${it.columnNumber}."
+                    }
+                    ?: "Не удалось прочитать FB2. Проверьте, что файл целый и имеет формат FB2."
+            throw BookImportException(reason).apply { initCause(e) }
         }
         return builder.build()
     }
+
+    private class Fb2ReadFailure(message: String) : SAXException(message)
 
     private val headingPattern =
         Regex("^(глава|часть|пролог|эпилог|chapter|part)(?:\\s|$|[.:])", RegexOption.IGNORE_CASE)
