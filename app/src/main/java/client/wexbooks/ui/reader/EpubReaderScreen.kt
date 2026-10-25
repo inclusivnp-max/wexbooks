@@ -63,21 +63,24 @@ fun EpubReaderScreen(
     model: BooksViewModel,
 ) {
     val engine = session.reader as EpubReaderSession
+    var viewportChanging by remember { mutableStateOf(false) }
+    val controls = LocalReadingControls.current
+    val controlsVisible = controls?.visible != false
+    val rootView = androidx.compose.ui.platform.LocalView.current
     EpubTextMorph(
         engine,
-        preferences.reduceMotion || !preferences.animateText,
+        preferences.reduceMotion || !preferences.animateText || viewportChanging,
         preferences.scroll,
         preferences.fontSize,
         darkTheme,
         preferences.readingStyle(darkTheme),
+        viewportKey = controlsVisible,
     )
     val colors = MaterialTheme.colorScheme
     val backdrop = rememberCanvasBackdrop { drawRect(colors.background) }
     val controller = engine.rendition.controller
     val location = controller?.location?.toLocator()
     val scope = rememberCoroutineScope()
-    val controls = LocalReadingControls.current
-    val controlsVisible = controls?.visible != false
     var sheet by remember { mutableStateOf<String?>(null) }
     var quote by remember { mutableStateOf<QuoteDraft?>(null) }
     var quoteHelp by remember { mutableStateOf(false) }
@@ -131,7 +134,14 @@ fun EpubReaderScreen(
         else if (!controlsVisible) controls?.visible = true else model.closeBook()
     }
     Box(Modifier.fillMaxSize().background(colors.background).testTag("epub-reader")) {
-        Box(Modifier.fillMaxSize()) {
+        ReaderViewport(
+            controlsVisible,
+            preferences,
+            horizontalMargin = 0.dp,
+            normalBottom = 106.dp,
+            onMotionChanged = { viewportChanging = it },
+            awaitVisualReady = { client.wexbooks.ui.motion.awaitWebViewport(rootView) },
+        ) {
             ReflowableWebRendition(
                 state = engine.rendition,
                 inputListener =
@@ -149,14 +159,7 @@ fun EpubReaderScreen(
                             }
                         }
                     },
-                modifier =
-                    Modifier.fillMaxSize()
-                        .statusBarsPadding()
-                        .navigationBarsPadding()
-                        .padding(
-                            top = if (controlsVisible) 80.dp else 20.dp,
-                            bottom = if (controlsVisible) 106.dp else 20.dp,
-                        ),
+                modifier = Modifier.fillMaxSize(),
             )
         }
         AnimatedVisibility(

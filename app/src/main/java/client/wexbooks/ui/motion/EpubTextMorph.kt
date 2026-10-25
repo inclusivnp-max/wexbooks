@@ -25,10 +25,11 @@ fun EpubTextMorph(
     fontSize: Int,
     themeKey: Boolean,
     typographyKey: Any? = null,
+    viewportKey: Any? = null,
 ) {
     val root = LocalView.current
     val assets = LocalContext.current.assets
-    LaunchedEffect(engine, reduced, scroll, fontSize, themeKey, typographyKey) {
+    LaunchedEffect(engine, reduced, scroll, fontSize, themeKey, typographyKey, viewportKey) {
         webViews(root).forEach {
             it.evaluateJavascript(
                 "window.__wexStopTextMorph?.(); window.__wexTextFrame = null;",
@@ -77,3 +78,27 @@ internal fun webViews(view: View): List<WebView> =
         is ViewGroup -> (0 until view.childCount).flatMap { webViews(view.getChildAt(it)) }
         else -> emptyList()
     }
+
+/** Wait for resized DOM ink using the public WebView compositor fence, not a screen capture. */
+internal suspend fun awaitWebViewport(root: View) {
+    kotlinx.coroutines.delay(64)
+    webViews(root)
+        .filter {
+            it.isShown &&
+                it.width > 0 &&
+                it.height > 0 &&
+                it.getGlobalVisibleRect(android.graphics.Rect())
+        }
+        .forEach { web ->
+            kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
+                web.postVisualStateCallback(
+                    0L,
+                    object : WebView.VisualStateCallback() {
+                        override fun onComplete(requestId: Long) {
+                            if (continuation.isActive) continuation.resumeWith(Result.success(Unit))
+                        }
+                    },
+                )
+            }
+        }
+}

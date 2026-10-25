@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
+import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
@@ -72,53 +73,7 @@ class ReaderBenchmark {
             metrics = listOf(FrameTimingMetric()),
             compilationMode = CompilationMode.None(),
             iterations = pageIterations,
-            setupBlock = {
-                pressHome()
-                killProcess()
-                startActivityAndWait()
-                check(device.wait(Until.hasObject(By.text("Библиотека")), 15_000))
-                val existing = device.findObject(By.textContains("Тихие страницы"))
-                if (existing != null) existing.click()
-                else {
-                    var button = device.findObject(By.text("Попробовать чтение"))
-                    repeat(3) {
-                        if (button == null) {
-                            device.swipe(
-                                device.displayWidth / 2,
-                                device.displayHeight * 3 / 4,
-                                device.displayWidth / 2,
-                                device.displayHeight / 3,
-                                12,
-                            )
-                            button = device.findObject(By.text("Попробовать чтение"))
-                        }
-                    }
-                    checkNotNull(button).click()
-                }
-                check(device.wait(Until.hasObject(By.textContains("% прочитано")), 25_000))
-                clickSetupControl("Оглавление")
-                device.waitForIdle()
-                val chapter =
-                    device.wait(
-                        Until.findObject(By.desc("Открыть главу: Искусство не спешить")),
-                        5_000,
-                    )
-                if (chapter == null) {
-                    val path =
-                        InstrumentationRegistry.getArguments()
-                            .getString("additionalTestOutputDir")
-                            ?.let { File(it) }
-                    if (path != null) {
-                        path.mkdirs()
-                        device.takeScreenshot(File(path, "epub-toc-failure.png"))
-                        File(path, "epub-toc-failure.xml").outputStream().use {
-                            device.dumpWindowHierarchy(it)
-                        }
-                    }
-                }
-                checkNotNull(chapter).click()
-                device.waitForIdle()
-            },
+            setupBlock = { openEpub() },
         ) {
             repeat(12) {
                 checkNotNull(device.findObject(By.desc("Следующая страница"))).click()
@@ -133,60 +88,131 @@ class ReaderBenchmark {
             metrics = listOf(FrameTimingMetric()),
             compilationMode = CompilationMode.None(),
             iterations = pageIterations,
-            setupBlock = {
-                val context = InstrumentationRegistry.getInstrumentation().context
-                val file = File(context.cacheDir, "fixtures/Native benchmark.txt")
-                file.parentFile!!.mkdirs()
-                if (!file.exists())
-                    file.writeText(
-                        buildString {
-                            repeat(10) { chapter ->
-                                append("Глава ${chapter + 1}. Нативный тест\n\n")
-                                repeat(25) {
-                                    append(
-                                        "Это воспроизводимый текст для проверки собственной вёрстки WexBooks. Книга остаётся спокойной, а переход к следующей странице должен сразу отвечать на касание.\n\n"
-                                    )
-                                }
-                            }
-                        }
-                    )
-                val uri =
-                    FileProvider.getUriForFile(context, "${context.packageName}.fixtures", file)
-                pressHome()
-                killProcess()
-                // force-stop revokes temporary grants, so grant only after killing the target.
-                context.grantUriPermission(target, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                startActivityAndWait(
-                    Intent(Intent.ACTION_VIEW)
-                        .setComponent(ComponentName(target, "client.wexbooks.MainActivity"))
-                        .setDataAndType(uri, "text/plain")
-                )
-                check(device.wait(Until.hasObject(By.text("Библиотека")), 15_000))
-                var book =
-                    device.wait(Until.findObject(By.textContains("Native benchmark")), 10_000)
-                repeat(3) {
-                    if (book == null) {
-                        device.swipe(
-                            device.displayWidth / 2,
-                            device.displayHeight * 3 / 4,
-                            device.displayWidth / 2,
-                            device.displayHeight / 3,
-                            12,
-                        )
-                        book = device.findObject(By.textContains("Native benchmark"))
-                    }
-                }
-                checkNotNull(book).click()
-                check(device.wait(Until.hasObject(By.textContains("% прочитано")), 20_000))
-                clickSetupControl("Оглавление")
-                check(device.wait(Until.hasObject(By.text("Глава 1. Нативный тест")), 5_000))
-                device.findObject(By.text("Глава 1. Нативный тест")).click()
-                device.waitForIdle()
-            },
+            setupBlock = { openNative() },
         ) {
             repeat(12) {
                 checkNotNull(device.findObject(By.desc("Следующая страница"))).click()
                 device.waitForIdle()
+            }
+        }
+
+    private fun MacrobenchmarkScope.openEpub() {
+        pressHome()
+        killProcess()
+        startActivityAndWait()
+        check(device.wait(Until.hasObject(By.text("Библиотека")), 15_000))
+        val existing = device.findObject(By.textContains("Тихие страницы"))
+        if (existing != null) existing.click()
+        else {
+            var button = device.findObject(By.text("Попробовать чтение"))
+            repeat(3) {
+                if (button == null) {
+                    device.swipe(
+                        device.displayWidth / 2,
+                        device.displayHeight * 3 / 4,
+                        device.displayWidth / 2,
+                        device.displayHeight / 3,
+                        12,
+                    )
+                    button = device.findObject(By.text("Попробовать чтение"))
+                }
+            }
+            checkNotNull(button).click()
+        }
+        check(device.wait(Until.hasObject(By.textContains("% прочитано")), 25_000))
+        clickSetupControl("Оглавление")
+        device.waitForIdle()
+        val chapter =
+            device.wait(
+                Until.findObject(By.desc("Открыть главу: Искусство не спешить")),
+                5_000,
+            )
+        if (chapter == null) {
+            val path =
+                InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let {
+                    File(it)
+                }
+            if (path != null) {
+                path.mkdirs()
+                device.takeScreenshot(File(path, "epub-toc-failure.png"))
+                File(path, "epub-toc-failure.xml").outputStream().use {
+                    device.dumpWindowHierarchy(it)
+                }
+            }
+        }
+        checkNotNull(chapter).click()
+        device.waitForIdle()
+    }
+
+    private fun MacrobenchmarkScope.openNative() {
+        val context = InstrumentationRegistry.getInstrumentation().context
+        val file = File(context.cacheDir, "fixtures/Native benchmark.txt")
+        file.parentFile!!.mkdirs()
+        if (!file.exists())
+            file.writeText(
+                buildString {
+                    repeat(10) { chapter ->
+                        append("Глава ${chapter + 1}. Нативный тест\n\n")
+                        repeat(25) {
+                            append(
+                                "Это воспроизводимый текст для проверки собственной вёрстки WexBooks. Книга остаётся спокойной, а переход к следующей странице должен сразу отвечать на касание.\n\n"
+                            )
+                        }
+                    }
+                }
+            )
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fixtures", file)
+        pressHome()
+        killProcess()
+        // force-stop revokes temporary grants, so grant only after killing the target.
+        context.grantUriPermission(target, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        startActivityAndWait(
+            Intent(Intent.ACTION_VIEW)
+                .setComponent(ComponentName(target, "client.wexbooks.MainActivity"))
+                .setDataAndType(uri, "text/plain")
+        )
+        check(device.wait(Until.hasObject(By.text("Библиотека")), 15_000))
+        var book = device.wait(Until.findObject(By.textContains("Native benchmark")), 10_000)
+        repeat(3) {
+            if (book == null) {
+                device.swipe(
+                    device.displayWidth / 2,
+                    device.displayHeight * 3 / 4,
+                    device.displayWidth / 2,
+                    device.displayHeight / 3,
+                    12,
+                )
+                book = device.findObject(By.textContains("Native benchmark"))
+            }
+        }
+        checkNotNull(book).click()
+        check(device.wait(Until.hasObject(By.textContains("% прочитано")), 20_000))
+        clickSetupControl("Оглавление")
+        check(device.wait(Until.hasObject(By.text("Глава 1. Нативный тест")), 5_000))
+        device.findObject(By.text("Глава 1. Нативный тест")).click()
+        device.waitForIdle()
+    }
+
+    @Test fun nativeFocusTransitions() = focusTransitions(native = true)
+
+    @Test fun epubFocusTransitions() = focusTransitions(native = false)
+
+    private fun focusTransitions(native: Boolean) =
+        benchmark.measureRepeated(
+            packageName = target,
+            metrics = listOf(FrameTimingMetric()),
+            compilationMode = CompilationMode.None(),
+            iterations = 2,
+            setupBlock = { if (native) openNative() else openEpub() },
+        ) {
+            repeat(4) {
+                // Measure the real page tap, away from the system notification strip.
+                device.click(device.displayWidth / 2, device.displayHeight / 2)
+                device.waitForIdle()
+                check(!device.hasObject(By.desc("Скрыть панели")))
+                device.pressBack()
+                device.waitForIdle()
+                check(device.hasObject(By.desc("Скрыть панели")))
             }
         }
 }

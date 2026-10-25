@@ -31,6 +31,10 @@ if 'nativePageTurns' in current:
         new = current['nativePageTurns']['sampledMetrics']
         checks.append(('native CPU frame P95 vs previous', value, old['frameDurationCpuMs']['P95'] * 1.15))
         checks.append(('native frameOverrunMs P95 vs previous', new['frameOverrunMs']['P95'], old['frameOverrunMs']['P95'] + 2.0))
+for scenario in ['nativeFocusTransitions', 'epubFocusTransitions']:
+    if scenario in current:
+        value = current[scenario]['sampledMetrics']['frameDurationCpuMs']['P95']
+        checks.append((f'{scenario} CPU frame P95 (initial 60Hz budget)', value, 16.7))
 passed = True
 for name, value, limit in checks:
     ok = value <= limit

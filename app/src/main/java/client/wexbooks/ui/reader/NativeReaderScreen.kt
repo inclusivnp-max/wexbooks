@@ -55,13 +55,14 @@ fun NativeReaderScreen(
     model: BooksViewModel,
 ) {
     val engine = session.reader as NativeReaderSession
+    var viewportChanging by remember { mutableStateOf(false) }
     val render by engine.render.collectAsStateWithLifecycle()
     val position by engine.position.collectAsStateWithLifecycle()
     val textMotion =
         rememberNativeTextMorph(
             render.page,
             engine.layoutKey(),
-            preferences.reduceMotion || !preferences.animateText,
+            preferences.reduceMotion || !preferences.animateText || viewportChanging,
             render.forward,
         )
     val colors = MaterialTheme.colorScheme
@@ -154,62 +155,66 @@ fun NativeReaderScreen(
         }
     }
     Box(Modifier.fillMaxSize().background(colors.background).testTag("native-reader")) {
-        Box(
-            Modifier.fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(
-                    start = preferences.horizontalMargin.dp,
-                    end = preferences.horizontalMargin.dp,
-                    top = if (controlsVisible) 80.dp else 22.dp,
-                    bottom = if (controlsVisible) 110.dp else 22.dp,
-                )
-                .onSizeChanged {
+        ReaderViewport(
+            controlsVisible,
+            preferences,
+            horizontalMargin = preferences.horizontalMargin.dp,
+            normalBottom = 110.dp,
+            onMotionChanged = { viewportChanging = it },
+            contentReady = { target ->
+                engine.layoutKey()?.let {
+                    it.width == target.width && it.height == target.height
+                } == true && !engine.render.value.loading
+            },
+        ) {
+            Box(
+                Modifier.fillMaxSize().onSizeChanged {
                     if (it != size) {
                         engine.prepareReflow()
                         size = it
                     }
                 }
-        ) {
-            val page = render.page
-            if (page != null) {
-                NativePageContent(
-                    engine,
-                    page,
-                    selection,
-                    saved.filter {
-                        it.end.block >= page.start.block && it.start.block <= page.end.block
-                    },
-                    onSelection = { selection = it },
-                    onLink = { id ->
-                        val footnote = engine.document.notes[id]
-                        if (footnote != null) {
-                            note = footnote
-                            sheet = "note"
-                        } else
-                            engine.document.targets[id]?.let { block ->
-                                scope.launch { engine.goTo(engine.document.position(block, 0)) }
-                            }
-                                ?: run {
-                                    note =
-                                        NativeNote(
-                                            "Сноска",
-                                            "В файле книги нет текста этой сноски.",
-                                        )
-                                    sheet = "note"
+            ) {
+                val page = render.page
+                if (page != null) {
+                    NativePageContent(
+                        engine,
+                        page,
+                        selection,
+                        saved.filter {
+                            it.end.block >= page.start.block && it.start.block <= page.end.block
+                        },
+                        onSelection = { selection = it },
+                        onLink = { id ->
+                            val footnote = engine.document.notes[id]
+                            if (footnote != null) {
+                                note = footnote
+                                sheet = "note"
+                            } else
+                                engine.document.targets[id]?.let { block ->
+                                    scope.launch { engine.goTo(engine.document.position(block, 0)) }
                                 }
-                    },
-                    onImage = { image = it },
-                    motion = textMotion,
-                    onShowControls = { controls?.visible = true },
-                    onPageTap = { fraction -> controls?.tap(fraction) },
-                    onPageSwipe = { forward ->
-                        if (forward) controls?.next() else controls?.previous()
-                    },
-                )
-            } else if (render.error != null) {
-                Text(render.error!!, Modifier.align(Alignment.Center))
-            } else CircularProgressIndicator(Modifier.align(Alignment.Center))
+                                    ?: run {
+                                        note =
+                                            NativeNote(
+                                                "Сноска",
+                                                "В файле книги нет текста этой сноски.",
+                                            )
+                                        sheet = "note"
+                                    }
+                        },
+                        onImage = { image = it },
+                        motion = textMotion,
+                        onShowControls = { controls?.visible = true },
+                        onPageTap = { fraction -> controls?.tap(fraction) },
+                        onPageSwipe = { forward ->
+                            if (forward) controls?.next() else controls?.previous()
+                        },
+                    )
+                } else if (render.error != null) {
+                    Text(render.error!!, Modifier.align(Alignment.Center))
+                } else CircularProgressIndicator(Modifier.align(Alignment.Center))
+            }
         }
         AnimatedVisibility(
             controlsVisible,
