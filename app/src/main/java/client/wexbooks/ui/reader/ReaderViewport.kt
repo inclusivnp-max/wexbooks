@@ -113,7 +113,14 @@ fun ReaderViewport(
                     }
                     reveal.animateTo(targetHeight.toFloat(), tween(320, easing = TextMorph.Easing))
                 }
-                if (!expanding) measuredHeight = targetHeight
+                if (!expanding) {
+                    measuredHeight = targetHeight
+                    repeat(2) { withFrameNanos {} }
+                    withTimeoutOrNull(2000) {
+                        while (!ready(IntSize(targetWidth, targetHeight))) withFrameNanos {}
+                        visualReady()
+                    }
+                }
             } finally {
                 changing = false
                 reportMotion(false)

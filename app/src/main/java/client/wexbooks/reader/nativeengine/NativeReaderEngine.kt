@@ -107,6 +107,11 @@ class NativeReaderSession(
     private var prefetch: Job? = null
     private var generation = 0L
     private var geometryPending = false
+    private var viewportChanging = false
+
+    override fun setViewportTransitioning(changing: Boolean) {
+        viewportChanging = changing
+    }
 
     fun prepareReflow() {
         if (closed.get()) return
@@ -115,7 +120,7 @@ class NativeReaderSession(
     }
 
     private suspend fun awaitGeometry(): Boolean {
-        while (geometryPending && !closed.get()) delay(16)
+        while ((geometryPending || viewportChanging) && !closed.get()) delay(16)
         return !closed.get()
     }
 

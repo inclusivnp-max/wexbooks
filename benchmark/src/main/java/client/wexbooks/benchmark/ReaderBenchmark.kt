@@ -99,7 +99,17 @@ class ReaderBenchmark {
     private fun MacrobenchmarkScope.openEpub() {
         pressHome()
         killProcess()
-        startActivityAndWait()
+        try {
+            startActivityAndWait()
+        } catch (failure: IllegalStateException) {
+            // Android 17 can return an empty am-start completion even after opening the app.
+            // This is unmeasured setup: confirm the actual target UI instead of assuming launch.
+            if (failure.message?.startsWith("Unable to confirm activity launch completion") != true)
+                throw failure
+            check(device.wait(Until.hasObject(By.pkg(target).text("Библиотека")), 5_000)) {
+                "Target library did not appear after am-start completion failure"
+            }
+        }
         check(device.wait(Until.hasObject(By.text("Библиотека")), 15_000))
         val existing = device.findObject(By.textContains("Тихие страницы"))
         if (existing != null) existing.click()
@@ -207,12 +217,15 @@ class ReaderBenchmark {
         ) {
             repeat(4) {
                 // Measure the real page tap, away from the system notification strip.
-                device.click(device.displayWidth / 2, device.displayHeight / 2)
+                val bounds = checkNotNull(device.findObject(By.pkg(target))).visibleBounds
+                device.click(bounds.centerX(), bounds.centerY())
+                check(device.wait(Until.gone(By.desc("Скрыть панели")), 3_000)) {
+                    "Focus tap at ${bounds.centerX()},${bounds.centerY()} in $bounds did not hide controls"
+                }
                 device.waitForIdle()
-                check(!device.hasObject(By.desc("Скрыть панели")))
                 device.pressBack()
+                check(device.wait(Until.hasObject(By.desc("Скрыть панели")), 3_000))
                 device.waitForIdle()
-                check(device.hasObject(By.desc("Скрыть панели")))
             }
         }
 }

@@ -139,7 +139,10 @@ fun EpubReaderScreen(
             preferences,
             horizontalMargin = 0.dp,
             normalBottom = 106.dp,
-            onMotionChanged = { viewportChanging = it },
+            onMotionChanged = {
+                engine.setViewportTransitioning(it)
+                viewportChanging = it
+            },
             awaitVisualReady = { client.wexbooks.ui.motion.awaitWebViewport(rootView) },
         ) {
             ReflowableWebRendition(
@@ -240,7 +243,7 @@ fun EpubReaderScreen(
                 ReaderIconAction(
                     WexIcons.Back,
                     "Предыдущая страница",
-                    enabled = controller?.canMoveBackward == true,
+                    enabled = controller?.canMoveBackward == true && !viewportChanging,
                 ) {
                     controls?.previous() ?: run { scope.launch { controller?.moveBackward() } }
                 }
@@ -290,7 +293,7 @@ fun EpubReaderScreen(
                 ReaderIconAction(
                     WexIcons.Arrow,
                     "Следующая страница",
-                    enabled = controller?.canMoveForward == true,
+                    enabled = controller?.canMoveForward == true && !viewportChanging,
                 ) {
                     controls?.next() ?: run { scope.launch { controller?.moveForward() } }
                 }

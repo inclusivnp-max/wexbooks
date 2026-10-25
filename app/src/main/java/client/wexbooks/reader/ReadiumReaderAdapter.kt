@@ -68,6 +68,17 @@ class EpubReaderSession(
     val rendition: ReflowableWebRenditionState,
 ) : ReaderSession {
     private val closed = AtomicBoolean(false)
+    private var viewportChanging = false
+
+    override fun setViewportTransitioning(changing: Boolean) {
+        viewportChanging = changing
+    }
+
+    private suspend fun awaitViewport(): Boolean {
+        while (viewportChanging && !closed.get()) kotlinx.coroutines.delay(16)
+        return !closed.get()
+    }
+
     private val _position = MutableStateFlow<ReaderPosition?>(null)
     override val position = _position.asStateFlow()
     override val chapters: List<ReaderChapter> = flatten(publication.tableOfContents)
@@ -82,10 +93,12 @@ class EpubReaderSession(
     }
 
     override suspend fun forward() {
+        if (!awaitViewport()) return
         rendition.controller?.moveForward()
     }
 
     override suspend fun backward() {
+        if (!awaitViewport()) return
         rendition.controller?.moveBackward()
     }
 

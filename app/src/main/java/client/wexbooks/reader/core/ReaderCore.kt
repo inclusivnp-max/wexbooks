@@ -49,6 +49,9 @@ interface ReaderSession : Closeable {
     val position: StateFlow<ReaderPosition?>
     val chapters: List<ReaderChapter>
 
+    /** Queue page commands while the viewport is between endpoint geometries. */
+    fun setViewportTransitioning(changing: Boolean) {}
+
     suspend fun forward()
 
     suspend fun backward()

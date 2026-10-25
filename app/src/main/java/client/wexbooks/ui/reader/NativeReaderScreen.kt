@@ -160,7 +160,10 @@ fun NativeReaderScreen(
             preferences,
             horizontalMargin = preferences.horizontalMargin.dp,
             normalBottom = 110.dp,
-            onMotionChanged = { viewportChanging = it },
+            onMotionChanged = {
+                engine.setViewportTransitioning(it)
+                viewportChanging = it
+            },
             contentReady = { target ->
                 engine.layoutKey()?.let {
                     it.width == target.width && it.height == target.height
@@ -316,7 +319,10 @@ fun NativeReaderScreen(
                     ReaderIconAction(
                         WexIcons.Back,
                         "Предыдущая страница",
-                        enabled = render.page?.hasPrevious == true && !render.loading,
+                        enabled =
+                            render.page?.hasPrevious == true &&
+                                !render.loading &&
+                                !viewportChanging,
                     ) {
                         controls?.previous() ?: run { scope.launch { engine.backward() } }
                     }
@@ -345,7 +351,8 @@ fun NativeReaderScreen(
                     ReaderIconAction(
                         WexIcons.Arrow,
                         "Следующая страница",
-                        enabled = render.page?.hasNext == true && !render.loading,
+                        enabled =
+                            render.page?.hasNext == true && !render.loading && !viewportChanging,
                     ) {
                         controls?.next() ?: run { scope.launch { engine.forward() } }
                     }

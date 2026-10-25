@@ -182,6 +182,35 @@ class FocusMotionTest {
     }
 
     @Test
+    fun pageTurnDuringCollapseWaitsForTheShortPageBoundary() {
+        open(BookFormat.TXT)
+        val reader = model.opened.value!!.reader as NativeReaderSession
+        val expectedNext = reader.render.value.page!!.end
+        val start = reader.position.value
+        rule.onNodeWithTag("native-page").performTouchInput { click(center) }
+        rule.waitForIdle()
+        rule.waitUntil(5000) { !moving() }
+        rule.onNodeWithText("Aa").assertDoesNotExist()
+        rule.mainClock.autoAdvance = false
+        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.waitUntil(5000) {
+            rule.mainClock.advanceTimeByFrame()
+            moving()
+        }
+        rule.runOnIdle { model.volumePage(true) }
+        rule.mainClock.advanceTimeBy(32)
+        assertEquals(
+            "Do not turn using the previous fullscreen boundary",
+            start,
+            reader.position.value,
+        )
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        rule.waitUntil(5000) { reader.position.value != start }
+        assertEquals(expectedNext, reader.position.value)
+    }
+
+    @Test
     fun reducedMotionSnapsToASafeViewport() {
         open(BookFormat.TXT)
         rule.runOnIdle { model.updatePreferences { it.copy(reduceMotion = true) } }
