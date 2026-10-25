@@ -1,0 +1,57 @@
+{
+  "device": "Pixel 9 Pro XL",
+  "sdk": 37,
+  "date": "2026-10-25",
+  "mode": "profileable non-debuggable, release-like, CompilationMode.None",
+  "benchmarks": [
+    {
+      "name": "epubPageTurns",
+      "metrics": {
+        "frameCount": {
+          "minimum": 187.0,
+          "maximum": 201.0,
+          "median": 197.0,
+          "coefficientOfVariation": 0.03698001308168194,
+          "runs": [
+            187.0,
+            197.0,
+            201.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 3.060059,
+          "P90": 9.396972000000003,
+          "P95": 15.136775999999985,
+          "P99": 21.996446999999993
+        },
+        "frameOverrunMs": {
+          "P50": -11.903924,
+          "P90": -1.0758643999999986,
+          "P95": 4.385041999999995,
+          "P99": 20.22914731999989
+        }
+      }
+    },
+    {
+      "name": "libraryColdStart",
+      "metrics": {
+        "timeToInitialDisplayMs": {
+          "minimum": 240.442627,
+          "maximum": 294.302613,
+          "median": 262.876384,
+          "coefficientOfVariation": 0.07707261024373323,
+          "runs": [
+            294.302613,
+            240.442627,
+            274.590373,
+            254.292521,
+            262.876384
+          ]
+        }
+      },
+      "sampledMetrics": {}
+    }
+  ]
+}

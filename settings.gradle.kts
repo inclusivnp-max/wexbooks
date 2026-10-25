@@ -24,4 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "WexBooks"
 include(":app")
- 
+include(":benchmark")
+

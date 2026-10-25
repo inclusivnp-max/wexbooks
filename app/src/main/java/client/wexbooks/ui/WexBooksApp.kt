@@ -1,6 +1,8 @@
 package client.wexbooks.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -30,11 +32,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,10 +46,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -69,6 +72,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import client.wexbooks.ui.components.WexIcons
 import client.wexbooks.ui.glass.wexGlass
 import client.wexbooks.ui.motion.LocalReducedMotion
@@ -78,53 +82,102 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
-/** Interactive visual foundation, not an ebook parser or a populated library. */
+/** Production shell: local library, durable preferences, and the real EPUB navigator. */
 @Composable
-fun WexBooksApp(onDarkThemeChanged: (Boolean) -> Unit = {}) {
-    val systemDarkTheme = isSystemInDarkTheme()
-    var darkTheme by rememberSaveable { mutableStateOf(systemDarkTheme) }
-    var reduceTransparency by rememberSaveable { mutableStateOf(false) }
-    var reduceMotion by rememberSaveable { mutableStateOf(false) }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    var readingDemo by rememberSaveable { mutableStateOf(false) }
-    var textSize by rememberSaveable { mutableIntStateOf(22) }
-    var demoBookmark by rememberSaveable { mutableStateOf(false) }
-    // Observe the value during composition, not only inside the deferred effect.
-    val currentDarkTheme = darkTheme
-    SideEffect { onDarkThemeChanged(currentDarkTheme) }
-    BackHandler(enabled = readingDemo || tab != 0) {
-        if (readingDemo) readingDemo = false else tab = 0
+fun WexBooksApp(
+    incomingUris: List<android.net.Uri> = emptyList(),
+    onUrisConsumed: () -> Unit = {},
+    model: client.wexbooks.reader.BooksViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    onDarkThemeChanged: (Boolean) -> Unit = {},
+) {
+    val settings by model.preferences.collectAsStateWithLifecycle()
+    val opened by model.opened.collectAsStateWithLifecycle()
+    val opening by model.opening.collectAsStateWithLifecycle()
+    val importing by model.importing.collectAsStateWithLifecycle()
+    val message by model.message.collectAsStateWithLifecycle()
+    val systemDark = isSystemInDarkTheme()
+    val prefs = settings
+    if (prefs == null) {
+        WexBooksTheme(systemDark) {
+            Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        return
     }
-
+    val darkTheme = prefs.darkTheme ?: systemDark
+    val reduceMotion = prefs.reduceMotion
+    val reduceTransparency = prefs.reduceTransparency
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val picker =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            model.importUris(uris)
+        }
+    val onImport: () -> Unit = {
+        picker.launch(
+            arrayOf(
+                "application/epub+zip",
+                "text/plain",
+                "application/x-fictionbook+xml",
+                "application/xml",
+                "application/zip",
+                "application/octet-stream",
+            )
+        )
+    }
+    SideEffect { onDarkThemeChanged(darkTheme) }
+    LaunchedEffect(incomingUris) {
+        if (incomingUris.isNotEmpty()) {
+            model.importUris(incomingUris)
+            onUrisConsumed()
+        }
+    }
+    BackHandler(enabled = opened == null && tab != 0) { tab = 0 }
     CompositionLocalProvider(LocalReducedMotion provides reduceMotion) {
         WexBooksTheme(darkTheme) {
-            val backdrop = rememberLayerBackdrop()
             val colors = MaterialTheme.colorScheme
+            val backdrop = rememberLayerBackdrop()
             Box(Modifier.fillMaxSize().background(colors.background)) {
-                // Only content is captured. Glass controls are siblings, never their own source.
-                Box(Modifier.fillMaxSize().layerBackdrop(backdrop).background(colors.background)) {
-                    AnimatedContent(
-                        targetState = readingDemo,
-                        modifier = Modifier.fillMaxSize(),
-                        transitionSpec = {
-                            WexMotion.pageTransition(reduceMotion, targetState).using(null)
-                        },
-                        label = "open book",
-                    ) { showReader ->
-                        if (showReader) {
-                            ReadingDemoContent(textSize)
-                        } else {
+                AnimatedContent(
+                    targetState = opened,
+                    modifier = Modifier.fillMaxSize(),
+                    contentKey = { it?.book?.id },
+                    transitionSpec = {
+                        WexMotion.pageTransition(reduceMotion, targetState != null).using(null)
+                    },
+                    label = "open publication",
+                ) { session ->
+                    if (session != null) {
+                        when (session.reader) {
+                            is client.wexbooks.reader.EpubReaderSession ->
+                                client.wexbooks.ui.reader.EpubReaderScreen(
+                                    session,
+                                    prefs,
+                                    darkTheme,
+                                    model,
+                                )
+                            is client.wexbooks.reader.nativeengine.NativeReaderSession ->
+                                client.wexbooks.ui.reader.NativeReaderScreen(
+                                    session,
+                                    prefs,
+                                    darkTheme,
+                                    model,
+                                )
+                        }
+                    } else {
+                        val books by model.books.collectAsStateWithLifecycle()
+                        val bookmarks by model.bookmarks.collectAsStateWithLifecycle()
+                        Box(Modifier.fillMaxSize()) {
                             Column(
                                 Modifier.fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
+                                    .layerBackdrop(backdrop)
+                                    .background(colors.background)
                                     .statusBarsPadding()
                                     .navigationBarsPadding()
-                                    .padding(
-                                        start = 24.dp,
-                                        end = 24.dp,
-                                        top = 20.dp,
-                                        bottom = 128.dp,
-                                    )
+                                    .padding(start = 24.dp, end = 24.dp, top = 20.dp)
                             ) {
                                 Row(
                                     Modifier.fillMaxWidth().height(52.dp),
@@ -141,6 +194,7 @@ fun WexBooksApp(onDarkThemeChanged: (Boolean) -> Unit = {}) {
                                 Spacer(Modifier.height(28.dp))
                                 AnimatedContent(
                                     targetState = tab,
+                                    modifier = Modifier.fillMaxWidth().weight(1f),
                                     transitionSpec = {
                                         WexMotion.pageTransition(
                                                 reduceMotion,
@@ -151,128 +205,66 @@ fun WexBooksApp(onDarkThemeChanged: (Boolean) -> Unit = {}) {
                                     label = "library destinations",
                                 ) { currentTab ->
                                     when (currentTab) {
-                                        0 -> LibraryContent { readingDemo = true }
-                                        1 -> NotesContent()
+                                        0 ->
+                                            client.wexbooks.ui.library.BookLibraryScreen(
+                                                books,
+                                                importing,
+                                                onImport,
+                                                { model.openBook(it.id) },
+                                                model::deleteBook,
+                                            ) {
+                                                LibraryContent(
+                                                    { model.openSample() },
+                                                    onImport,
+                                                    importing == null,
+                                                )
+                                            }
+                                        1 ->
+                                            if (bookmarks.isEmpty()) {
+                                                Column(
+                                                    Modifier.fillMaxSize()
+                                                        .verticalScroll(rememberScrollState())
+                                                        .padding(bottom = 132.dp)
+                                                ) {
+                                                    NotesContent()
+                                                }
+                                            } else {
+                                                client.wexbooks.ui.library.SavedBookmarksScreen(
+                                                    bookmarks,
+                                                    { model.openBook(it.bookId, it.locatorJson) },
+                                                    model::deleteBookmark,
+                                                )
+                                            }
                                         else ->
-                                            AppearanceContent(
-                                                darkTheme,
-                                                reduceTransparency,
-                                                reduceMotion,
-                                                { darkTheme = it },
-                                                { reduceTransparency = it },
-                                                { reduceMotion = it },
-                                            )
+                                            Column(
+                                                Modifier.fillMaxSize()
+                                                    .verticalScroll(rememberScrollState())
+                                                    .padding(bottom = 132.dp)
+                                            ) {
+                                                AppearanceContent(
+                                                    darkTheme,
+                                                    reduceTransparency,
+                                                    reduceMotion,
+                                                    { value ->
+                                                        model.updatePreferences {
+                                                            it.copy(darkTheme = value)
+                                                        }
+                                                    },
+                                                    { value ->
+                                                        model.updatePreferences {
+                                                            it.copy(reduceTransparency = value)
+                                                        }
+                                                    },
+                                                    { value ->
+                                                        model.updatePreferences {
+                                                            it.copy(reduceMotion = value)
+                                                        }
+                                                    },
+                                                )
+                                            }
                                     }
                                 }
                             }
-                        }
-                    }
-                }
-                AnimatedContent(
-                    targetState = readingDemo,
-                    modifier = Modifier.fillMaxSize(),
-                    transitionSpec = {
-                        WexMotion.pageTransition(reduceMotion, targetState).using(null)
-                    },
-                    label = "reader controls",
-                ) { showReaderControls ->
-                    Box(Modifier.fillMaxSize()) {
-                        if (showReaderControls) {
-                            Row(
-                                Modifier.align(Alignment.TopCenter)
-                                    .statusBarsPadding()
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                GlassIconButton(
-                                    WexIcons.Back,
-                                    "Назад в библиотеку",
-                                    backdrop,
-                                    darkTheme,
-                                    reduceTransparency,
-                                ) {
-                                    readingDemo = false
-                                }
-                                Text(
-                                    "Демо чтения",
-                                    fontSize = 13.sp,
-                                    color = colors.onSurfaceVariant,
-                                )
-                                GlassIconButton(
-                                    if (darkTheme) WexIcons.Sun else WexIcons.Moon,
-                                    "Сменить тему",
-                                    backdrop,
-                                    darkTheme,
-                                    reduceTransparency,
-                                ) {
-                                    darkTheme = !darkTheme
-                                }
-                            }
-                            Row(
-                                Modifier.align(Alignment.BottomCenter)
-                                    .navigationBarsPadding()
-                                    .padding(horizontal = 24.dp, vertical = 16.dp)
-                                    .wexGlass(backdrop, darkTheme, reduceTransparency, 32.dp)
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                TextButton(
-                                    onClick = { textSize = (textSize - 2).coerceAtLeast(16) },
-                                    modifier =
-                                        Modifier.size(48.dp).semantics {
-                                            contentDescription = "Уменьшить шрифт"
-                                        },
-                                ) {
-                                    Text("А", fontSize = 16.sp)
-                                }
-                                Text(
-                                    "$textSize",
-                                    modifier = Modifier.testTag("font-size"),
-                                    color = colors.onSurfaceVariant,
-                                    fontSize = 13.sp,
-                                )
-                                TextButton(
-                                    onClick = { textSize = (textSize + 2).coerceAtMost(34) },
-                                    modifier =
-                                        Modifier.size(48.dp).semantics {
-                                            contentDescription = "Увеличить шрифт"
-                                        },
-                                ) {
-                                    Text("А", fontSize = 24.sp)
-                                }
-                                Box(
-                                    Modifier.width(1.dp)
-                                        .height(24.dp)
-                                        .background(colors.outlineVariant)
-                                )
-                                Box(
-                                    Modifier.size(48.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (demoBookmark) colors.primary.copy(alpha = 0.13f)
-                                            else Color.Transparent
-                                        )
-                                        .toggleable(
-                                            demoBookmark,
-                                            role = Role.Checkbox,
-                                            onValueChange = { demoBookmark = it },
-                                        )
-                                        .semantics { contentDescription = "Закладка в демо" }
-                                        .testTag("demo-bookmark"),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        WexIcons.Bookmark,
-                                        null,
-                                        tint =
-                                            if (demoBookmark) colors.primary else colors.onSurface,
-                                    )
-                                }
-                            }
-                        } else {
                             GlassIconButton(
                                 if (darkTheme) WexIcons.Sun else WexIcons.Moon,
                                 "Сменить тему",
@@ -283,7 +275,7 @@ fun WexBooksApp(onDarkThemeChanged: (Boolean) -> Unit = {}) {
                                     .statusBarsPadding()
                                     .padding(top = 20.dp, end = 24.dp),
                             ) {
-                                darkTheme = !darkTheme
+                                model.updatePreferences { it.copy(darkTheme = !darkTheme) }
                             }
                             GlassNavigation(
                                 tab,
@@ -298,13 +290,39 @@ fun WexBooksApp(onDarkThemeChanged: (Boolean) -> Unit = {}) {
                         }
                     }
                 }
+                if (opening) {
+                    Box(
+                        Modifier.fillMaxSize().background(colors.background.copy(alpha = 0.8f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Text(
+                                "Открываем книгу…",
+                                Modifier.padding(top = 16.dp),
+                                color = colors.onSurfaceVariant,
+                            )
+                            TextButton(onClick = model::closeBook) { Text("Отмена") }
+                        }
+                    }
+                }
+                message?.let { text ->
+                    AlertDialog(
+                        onDismissRequest = model::dismissMessage,
+                        title = { Text("Открытие книги") },
+                        text = { Text(text) },
+                        confirmButton = {
+                            TextButton(onClick = model::dismissMessage) { Text("Понятно") }
+                        },
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun LibraryContent(onOpenDemo: () -> Unit) {
+private fun LibraryContent(onOpenDemo: () -> Unit, onImport: () -> Unit, importEnabled: Boolean) {
     val colors = MaterialTheme.colorScheme
     Column(Modifier.testTag("library-screen")) {
         Text(
@@ -321,7 +339,16 @@ private fun LibraryContent(onOpenDemo: () -> Unit) {
             lineHeight = 21.sp,
             color = colors.onSurfaceVariant,
         )
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(20.dp))
+        Button(
+            onClick = onImport,
+            enabled = importEnabled,
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("import-books"),
+        ) {
+            Text("Добавить книгу")
+        }
+        Spacer(Modifier.height(20.dp))
         Box(
             Modifier.fillMaxWidth()
                 .height(310.dp)
@@ -413,7 +440,7 @@ private fun LibraryContent(onOpenDemo: () -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "Пока здесь тихо. Скоро здесь будут ваши книги,\nлюбимые авторы и истории на потом.",
+            "Добавьте EPUB, FB2 или TXT — книга останется\nдоступной даже без интернета.",
             fontSize = 14.sp,
             lineHeight = 22.sp,
             color = colors.onSurfaceVariant,
@@ -576,52 +603,6 @@ private fun SettingRow(
 }
 
 @Composable
-private fun ReadingDemoContent(textSize: Int) {
-    val colors = MaterialTheme.colorScheme
-    Column(
-        Modifier.fillMaxSize()
-            .testTag("reading-demo-screen")
-            .verticalScroll(rememberScrollState())
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(start = 28.dp, end = 28.dp, top = 100.dp, bottom = 130.dp)
-    ) {
-        Text(
-            "ТИХИЕ СТРАНИЦЫ",
-            fontSize = 10.sp,
-            letterSpacing = 2.sp,
-            color = colors.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(20.dp))
-        Text(
-            "Искусство\nне спешить",
-            fontFamily = FontFamily.Serif,
-            fontSize = 38.sp,
-            lineHeight = 42.sp,
-            color = colors.onSurface,
-        )
-        Spacer(Modifier.height(28.dp))
-        SelectionContainer {
-            Text(
-                DemoText,
-                fontFamily = FontFamily.Serif,
-                fontSize = textSize.sp,
-                lineHeight = (textSize * 1.55f).sp,
-                color = colors.onSurface,
-                letterSpacing = 0.1.sp,
-            )
-        }
-        Spacer(Modifier.height(28.dp))
-        Text(
-            "Короткий авторский текст для демонстрации оформления.",
-            fontSize = 12.sp,
-            lineHeight = 19.sp,
-            color = colors.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
 private fun GlassNavigation(
     selected: Int,
     onSelect: (Int) -> Unit,
@@ -692,7 +673,7 @@ private fun GlassNavigation(
 }
 
 @Composable
-private fun GlassIconButton(
+internal fun GlassIconButton(
     icon: ImageVector,
     description: String,
     backdrop: Backdrop,
@@ -731,12 +712,3 @@ private fun GlassIconButton(
         Icon(icon, null, Modifier.size(21.dp), tint = MaterialTheme.colorScheme.onSurface)
     }
 }
-
-private const val DemoText =
-    """Иногда хорошая история начинается не с первого предложения, а с короткой паузы перед ним. Телефон перестаёт быть лентой событий и становится просто книгой.
-
-За окном меняется свет. Чай успевает немного остыть. Вы замечаете, как легко следить за строкой, когда вокруг неё нет ничего лишнего.
-
-Можно задержаться на одном абзаце. Вернуться на страницу назад. Найти фразу, которая неожиданно точно описывает сегодняшний день.
-
-Книга никуда не торопится. И хотя бы несколько минут вы тоже можете не спешить."""

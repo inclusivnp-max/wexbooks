@@ -41,6 +41,23 @@ object WexIcons {
             moveTo(8f, 16f)
             lineTo(13f, 16f)
         }
+    val Trash =
+        outline("Trash") {
+            moveTo(4f, 6f)
+            lineTo(20f, 6f)
+            moveTo(9f, 6f)
+            lineTo(9f, 3f)
+            lineTo(15f, 3f)
+            lineTo(15f, 6f)
+            moveTo(6f, 6f)
+            lineTo(7f, 21f)
+            lineTo(17f, 21f)
+            lineTo(18f, 6f)
+            moveTo(10f, 10f)
+            lineTo(10f, 17f)
+            moveTo(14f, 10f)
+            lineTo(14f, 17f)
+        }
     val Settings =
         outline("Settings") {
             moveTo(4f, 7f)

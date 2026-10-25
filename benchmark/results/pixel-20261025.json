@@ -1,0 +1,87 @@
+{
+  "device": "Pixel 9 Pro XL",
+  "sdk": 37,
+  "date": "2026-10-25",
+  "mode": "profileable non-debuggable, release-like, CompilationMode.None",
+  "benchmarks": [
+    {
+      "name": "epubPageTurns",
+      "metrics": {
+        "frameCount": {
+          "minimum": 193.0,
+          "maximum": 203.0,
+          "median": 195.0,
+          "coefficientOfVariation": 0.02686041940167097,
+          "runs": [
+            193.0,
+            195.0,
+            203.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 3.223958,
+          "P90": 8.251139,
+          "P95": 11.915792,
+          "P99": 18.29619080000001
+        },
+        "frameOverrunMs": {
+          "P50": -11.947137,
+          "P90": -0.808017,
+          "P95": 4.6257795,
+          "P99": 21.79441990000001
+        }
+      }
+    },
+    {
+      "name": "nativePageTurns",
+      "metrics": {
+        "frameCount": {
+          "minimum": 92.0,
+          "maximum": 104.0,
+          "median": 101.0,
+          "coefficientOfVariation": 0.06308078786261008,
+          "runs": [
+            101.0,
+            104.0,
+            92.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 3.997762,
+          "P90": 13.419767000000007,
+          "P95": 15.326090399999996,
+          "P99": 17.369067680000036
+        },
+        "frameOverrunMs": {
+          "P50": -10.243809,
+          "P90": 1.0782140000000027,
+          "P95": 5.786449599999999,
+          "P99": 6.7493522000000015
+        }
+      }
+    },
+    {
+      "name": "libraryColdStart",
+      "metrics": {
+        "timeToInitialDisplayMs": {
+          "minimum": 259.776408,
+          "maximum": 288.249431,
+          "median": 276.685384,
+          "coefficientOfVariation": 0.042078929910747964,
+          "runs": [
+            288.249431,
+            280.258912,
+            265.055339,
+            276.685384,
+            259.776408
+          ]
+        }
+      },
+      "sampledMetrics": {}
+    }
+  ]
+}
