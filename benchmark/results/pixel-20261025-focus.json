@@ -1,0 +1,152 @@
+{
+  "device": "Pixel 9 Pro XL",
+  "sdk": 37,
+  "date": "2026-10-25",
+  "sourceCommit": "a6f7409",
+  "mode": "profileable non-debuggable, release-like, CompilationMode.None",
+  "iterations": {
+    "startup": 5,
+    "pageTurns": 3,
+    "focusTransitions": 2,
+    "focusRoundTripsPerIteration": 4
+  },
+  "benchmarks": [
+    {
+      "name": "epubPageTurns",
+      "metrics": {
+        "frameCount": {
+          "minimum": 547.0,
+          "maximum": 548.0,
+          "median": 547.0,
+          "coefficientOfVariation": 0.0010548421483367095,
+          "runs": [
+            547.0,
+            548.0,
+            547.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 5.4336955,
+          "P90": 10.42731930000001,
+          "P95": 15.5447098,
+          "P99": 23.234822749999974
+        },
+        "frameOverrunMs": {
+          "P50": -9.836847500000001,
+          "P90": -1.2767579999999934,
+          "P95": 3.3495249999999817,
+          "P99": 14.11706410999998
+        }
+      }
+    },
+    {
+      "name": "nativeFocusTransitions",
+      "metrics": {
+        "frameCount": {
+          "minimum": 399.0,
+          "maximum": 403.0,
+          "median": 401.0,
+          "coefficientOfVariation": 0.007053434226299726,
+          "runs": [
+            399.0,
+            403.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 5.052713499999999,
+          "P90": 8.387512699999998,
+          "P95": 9.5699137,
+          "P99": 26.32025475000006
+        },
+        "frameOverrunMs": {
+          "P50": -9.949395500000001,
+          "P90": -6.1374424,
+          "P95": -3.7370612,
+          "P99": 12.645087990000015
+        }
+      }
+    },
+    {
+      "name": "nativePageTurns",
+      "metrics": {
+        "frameCount": {
+          "minimum": 67.0,
+          "maximum": 79.0,
+          "median": 79.0,
+          "coefficientOfVariation": 0.09237604307034011,
+          "runs": [
+            79.0,
+            67.0,
+            79.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 5.603231,
+          "P90": 7.9161374,
+          "P95": 9.81243499999999,
+          "P99": 11.13623888
+        },
+        "frameOverrunMs": {
+          "P50": -8.381464,
+          "P90": -0.9021264000000012,
+          "P95": 2.8731438,
+          "P99": 7.320077359999995
+        }
+      }
+    },
+    {
+      "name": "libraryColdStart",
+      "metrics": {
+        "timeToInitialDisplayMs": {
+          "minimum": 225.853679,
+          "maximum": 254.595093,
+          "median": 242.334595,
+          "coefficientOfVariation": 0.04456079869451429,
+          "runs": [
+            254.595093,
+            234.264038,
+            225.853679,
+            242.374105,
+            242.334595
+          ]
+        }
+      },
+      "sampledMetrics": {}
+    },
+    {
+      "name": "epubFocusTransitions",
+      "metrics": {
+        "frameCount": {
+          "minimum": 410.0,
+          "maximum": 413.0,
+          "median": 411.5,
+          "coefficientOfVariation": 0.005155091964908001,
+          "runs": [
+            413.0,
+            410.0
+          ]
+        }
+      },
+      "sampledMetrics": {
+        "frameDurationCpuMs": {
+          "P50": 8.083537,
+          "P90": 13.2580238,
+          "P95": 15.957646299999992,
+          "P99": 29.36356678
+        },
+        "frameOverrunMs": {
+          "P50": -6.652989,
+          "P90": 1.1086590000000036,
+          "P95": 6.787638999999999,
+          "P99": 28.770184159999893
+        }
+      }
+    }
+  ]
+}
