@@ -35,7 +35,6 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -73,6 +72,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import client.wexbooks.ui.components.WexDialog
 import client.wexbooks.ui.components.WexIcons
 import client.wexbooks.ui.glass.wexGlass
 import client.wexbooks.ui.motion.LocalReducedMotion
@@ -136,7 +136,10 @@ fun WexBooksApp(
         }
     }
     BackHandler(enabled = opened == null && tab != 0) { tab = 0 }
-    CompositionLocalProvider(LocalReducedMotion provides reduceMotion) {
+    CompositionLocalProvider(
+        LocalReducedMotion provides reduceMotion,
+        client.wexbooks.ui.glass.LocalReducedTransparency provides reduceTransparency,
+    ) {
         WexBooksTheme(darkTheme) {
             val colors = MaterialTheme.colorScheme
             val backdrop = rememberLayerBackdrop()
@@ -170,6 +173,7 @@ fun WexBooksApp(
                     } else {
                         val books by model.books.collectAsStateWithLifecycle()
                         val bookmarks by model.bookmarks.collectAsStateWithLifecycle()
+                        val annotations by model.annotations.collectAsStateWithLifecycle()
                         Box(Modifier.fillMaxSize()) {
                             Column(
                                 Modifier.fillMaxSize()
@@ -220,7 +224,7 @@ fun WexBooksApp(
                                                 )
                                             }
                                         1 ->
-                                            if (bookmarks.isEmpty()) {
+                                            if (bookmarks.isEmpty() && annotations.isEmpty()) {
                                                 Column(
                                                     Modifier.fillMaxSize()
                                                         .verticalScroll(rememberScrollState())
@@ -233,6 +237,9 @@ fun WexBooksApp(
                                                     bookmarks,
                                                     { model.openBook(it.bookId, it.locatorJson) },
                                                     model::deleteBookmark,
+                                                    annotations,
+                                                    { model.openBook(it.bookId, it.locatorJson) },
+                                                    model::deleteAnnotation,
                                                 )
                                             }
                                         else ->
@@ -307,14 +314,13 @@ fun WexBooksApp(
                     }
                 }
                 message?.let { text ->
-                    AlertDialog(
+                    WexDialog(
+                        title = "Открытие книги",
                         onDismissRequest = model::dismissMessage,
-                        title = { Text("Открытие книги") },
-                        text = { Text(text) },
-                        confirmButton = {
-                            TextButton(onClick = model::dismissMessage) { Text("Понятно") }
-                        },
-                    )
+                        confirmLabel = "Понятно",
+                    ) {
+                        Text(text)
+                    }
                 }
             }
         }

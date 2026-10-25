@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import client.wexbooks.data.BookRepository
 import client.wexbooks.data.LIBRARY_MIGRATION_1_2
+import client.wexbooks.data.LIBRARY_MIGRATION_2_3
 import client.wexbooks.data.LibraryDatabase
 import client.wexbooks.data.ReaderPreferencesStore
 import client.wexbooks.reader.ReadiumEngine
@@ -18,7 +19,7 @@ class WexBooksApplication : Application() {
 class AppContainer(application: Application) {
     val database =
         Room.databaseBuilder(application, LibraryDatabase::class.java, "library.db")
-            .addMigrations(LIBRARY_MIGRATION_1_2)
+            .addMigrations(LIBRARY_MIGRATION_1_2, LIBRARY_MIGRATION_2_3)
             .build()
     val preferences = ReaderPreferencesStore(application)
     val native = NativeReaderEngine()

@@ -13,25 +13,41 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import client.wexbooks.data.ReaderPositionCodec
 import client.wexbooks.data.ReaderPreferences
 import client.wexbooks.reader.BooksViewModel
 import client.wexbooks.reader.EpubReaderSession
 import client.wexbooks.reader.OpenedBook
+import client.wexbooks.reader.QuoteDraft
+import client.wexbooks.reader.core.ReaderPosition
 import client.wexbooks.ui.GlassIconButton
 import client.wexbooks.ui.components.ReaderIconAction
+import client.wexbooks.ui.components.WexDialog
 import client.wexbooks.ui.components.WexIcons
 import client.wexbooks.ui.glass.wexGlass
+import client.wexbooks.ui.motion.EpubTextMorph
+import client.wexbooks.ui.motion.WexAnimatedText
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
+import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import org.readium.navigator.common.Decoration
+import org.readium.navigator.web.reflowable.ReflowableWebDecorationLocation
 import org.readium.navigator.web.reflowable.ReflowableWebRendition
 import org.readium.navigator.web.reflowable.preferences.ReflowableWebPreferences
 import org.readium.r2.navigator.preferences.Color as ReadiumColor
 import org.readium.r2.shared.publication.Link
+import org.readium.r2.shared.publication.Locator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,12 +58,51 @@ fun EpubReaderScreen(
     model: BooksViewModel,
 ) {
     val engine = session.reader as EpubReaderSession
+    EpubTextMorph(
+        engine,
+        preferences.reduceMotion,
+        preferences.scroll,
+        preferences.fontSize,
+        darkTheme,
+    )
     val colors = MaterialTheme.colorScheme
     val backdrop = rememberCanvasBackdrop { drawRect(colors.background) }
     val controller = engine.rendition.controller
     val location = controller?.location?.toLocator()
     val scope = rememberCoroutineScope()
     var sheet by remember { mutableStateOf<String?>(null) }
+    var quote by remember { mutableStateOf<QuoteDraft?>(null) }
+    var quoteHelp by remember { mutableStateOf(false) }
+    val annotationFlow =
+        remember(session.book.id) { model.repository.dao.annotations(session.book.id) }
+    val annotations by annotationFlow.collectAsStateWithLifecycle(emptyList())
+    LaunchedEffect(controller, annotations, colors.primary) {
+        controller?.let { target ->
+            val tint = colors.primary.copy(alpha = 0.2f).toArgb()
+            val highlights =
+                withContext(Dispatchers.Default) {
+                    annotations
+                        .mapNotNull { saved ->
+                            ReaderPositionCodec.decode(saved.locatorJson)
+                                ?.payload
+                                ?.let {
+                                    runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull()
+                                }
+                                ?.let { locator ->
+                                    ReflowableWebDecorationLocation(locator)?.let { where ->
+                                        Decoration(
+                                            Decoration.Id(saved.id),
+                                            where,
+                                            Decoration.Style.Highlight(tint),
+                                        )
+                                    }
+                                }
+                        }
+                        .toPersistentList()
+                }
+            target.decorations = target.decorations.putting("quotes", highlights)
+        }
+    }
     var bookmarked by remember(controller?.location) { mutableStateOf(false) }
     val background = colors.background.toArgb()
     val foreground = colors.onBackground.toArgb()
@@ -107,7 +162,7 @@ fun EpubReaderScreen(
                     overflow = TextOverflow.Ellipsis,
                     fontSize = 14.sp,
                 )
-                Text(
+                WexAnimatedText(
                     if (location == null) "Открываем страницы…"
                     else
                         "${((location.locations.totalProgression ?: 0.0) * 100).toInt()}% прочитано",
@@ -157,6 +212,26 @@ fun EpubReaderScreen(
                 model.bookmark(session)
                 bookmarked = true
             }
+            ReaderIconAction(WexIcons.Notes, "Сохранить выделение", enabled = controller != null) {
+                scope.launch {
+                    val selected = controller?.currentSelection()
+                    if (selected == null || selected.text.isBlank()) quoteHelp = true
+                    else if (selected.text.length <= 12_000) {
+                        val locator = selected.location.toLocator()
+                        quote =
+                            QuoteDraft(
+                                ReaderPosition(
+                                    locator.href.toString(),
+                                    progression = locator.locations.totalProgression ?: 0.0,
+                                    payload = locator.toJSON().toString(),
+                                ),
+                                0,
+                                0,
+                                selected.text,
+                            )
+                    } else quoteHelp = true
+                }
+            }
             ReaderIconAction(if (darkTheme) WexIcons.Sun else WexIcons.Moon, "Сменить тему") {
                 model.updatePreferences { it.copy(darkTheme = !darkTheme) }
             }
@@ -168,6 +243,23 @@ fun EpubReaderScreen(
                 scope.launch { controller?.moveForward() }
             }
         }
+        quote?.let { draft ->
+            QuoteEditor(draft.text, onDismiss = { quote = null }) { note ->
+                model.saveQuote(session, draft, note)
+                controller?.clearSelection()
+            }
+        }
+        if (quoteHelp)
+            WexDialog(
+                title = "Цитаты из книги",
+                onDismissRequest = { quoteHelp = false },
+                confirmLabel = "Понятно",
+            ) {
+                Text(
+                    "Зажмите слово и растяните выделение, затем нажмите значок заметок в нижней панели. Можно сохранить до 12 000 символов за раз.",
+                    color = colors.onSurfaceVariant,
+                )
+            }
         if (sheet != null) {
             ModalBottomSheet(
                 onDismissRequest = { sheet = null },
@@ -195,7 +287,7 @@ fun EpubReaderScreen(
                             ) {
                                 Text("А−", fontSize = 20.sp)
                             }
-                            Text(
+                            WexAnimatedText(
                                 "${preferences.fontSize}",
                                 Modifier.testTag("font-size"),
                                 fontSize = 20.sp,
@@ -247,6 +339,10 @@ fun EpubReaderScreen(
                                 modifier =
                                     Modifier.fillMaxWidth()
                                         .padding(start = (16 + depth * 12).dp, end = 16.dp)
+                                        .semantics {
+                                            contentDescription =
+                                                "Открыть главу: ${link.title ?: "Глава"}"
+                                        }
                                         .testTag("chapter-${link.href}"),
                             ) {
                                 Text(

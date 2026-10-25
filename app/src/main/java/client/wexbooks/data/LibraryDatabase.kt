@@ -60,6 +60,46 @@ data class SavedBookmark(
     val author: String,
 )
 
+@Entity(
+    tableName = "annotations",
+    foreignKeys =
+        [
+            ForeignKey(
+                entity = BookEntity::class,
+                parentColumns = ["id"],
+                childColumns = ["bookId"],
+                onDelete = ForeignKey.CASCADE,
+            )
+        ],
+    indices =
+        [
+            Index("bookId"),
+            Index(value = ["bookId", "locatorJson", "endBlock", "endOffset"], unique = true),
+        ],
+)
+data class AnnotationEntity(
+    @PrimaryKey val id: String,
+    val bookId: String,
+    val locatorJson: String,
+    val endBlock: Int,
+    val endOffset: Int,
+    val quote: String,
+    val note: String,
+    val createdAt: Long,
+)
+
+data class SavedAnnotation(
+    val id: String,
+    val bookId: String,
+    val locatorJson: String,
+    val endBlock: Int,
+    val endOffset: Int,
+    val quote: String,
+    val note: String,
+    val createdAt: Long,
+    val bookTitle: String,
+)
+
 @Dao
 interface LibraryDao {
     @Query("SELECT * FROM books ORDER BY lastOpenedAt DESC, importedAt DESC")
@@ -87,10 +127,27 @@ interface LibraryDao {
 
     @Query("DELETE FROM bookmarks WHERE id = :id") suspend fun deleteBookmark(id: String)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAnnotation(annotation: AnnotationEntity): Long
+
+    @Query(
+        "SELECT annotations.*, books.title AS bookTitle FROM annotations INNER JOIN books ON books.id = annotations.bookId ORDER BY createdAt DESC"
+    )
+    fun observeAnnotations(): Flow<List<SavedAnnotation>>
+
+    @Query("SELECT * FROM annotations WHERE bookId = :bookId ORDER BY createdAt")
+    fun annotations(bookId: String): Flow<List<AnnotationEntity>>
+
+    @Query("DELETE FROM annotations WHERE id = :id") suspend fun deleteAnnotation(id: String)
+
     @Query("DELETE FROM books WHERE id = :id") suspend fun deleteBook(id: String)
 }
 
-@Database(entities = [BookEntity::class, BookmarkEntity::class], version = 2, exportSchema = true)
+@Database(
+    entities = [BookEntity::class, BookmarkEntity::class, AnnotationEntity::class],
+    version = 3,
+    exportSchema = true,
+)
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
 }
@@ -99,5 +156,18 @@ val LIBRARY_MIGRATION_1_2 =
     object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE books ADD COLUMN format TEXT NOT NULL DEFAULT 'EPUB'")
+        }
+    }
+
+val LIBRARY_MIGRATION_2_3 =
+    object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS annotations (id TEXT NOT NULL, bookId TEXT NOT NULL, locatorJson TEXT NOT NULL, endBlock INTEGER NOT NULL, endOffset INTEGER NOT NULL, quote TEXT NOT NULL, note TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY(id), FOREIGN KEY(bookId) REFERENCES books(id) ON UPDATE NO ACTION ON DELETE CASCADE)"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_annotations_bookId ON annotations(bookId)")
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS index_annotations_bookId_locatorJson_endBlock_endOffset ON annotations(bookId, locatorJson, endBlock, endOffset)"
+            )
         }
     }

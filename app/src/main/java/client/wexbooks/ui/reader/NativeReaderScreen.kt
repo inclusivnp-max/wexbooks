@@ -1,27 +1,24 @@
 package client.wexbooks.ui.reader
 
+import android.content.ClipData
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.text
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -35,9 +32,15 @@ import client.wexbooks.ui.GlassIconButton
 import client.wexbooks.ui.components.ReaderIconAction
 import client.wexbooks.ui.components.WexIcons
 import client.wexbooks.ui.glass.wexGlass
+import client.wexbooks.ui.motion.WexAnimatedText
 import client.wexbooks.ui.motion.WexMotion
+import client.wexbooks.ui.motion.rememberNativeTextMorph
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,6 +53,13 @@ fun NativeReaderScreen(
     val engine = session.reader as NativeReaderSession
     val render by engine.render.collectAsStateWithLifecycle()
     val position by engine.position.collectAsStateWithLifecycle()
+    val textMotion =
+        rememberNativeTextMorph(
+            render.page,
+            engine.layoutKey(),
+            preferences.reduceMotion,
+            render.forward,
+        )
     val colors = MaterialTheme.colorScheme
     val backdrop = rememberCanvasBackdrop { drawRect(colors.background) }
     val density = LocalDensity.current
@@ -57,6 +67,35 @@ fun NativeReaderScreen(
     val resolver = LocalFontFamilyResolver.current
     var size by remember { mutableStateOf(IntSize.Zero) }
     var sheet by remember { mutableStateOf<String?>(null) }
+    var selection by remember { mutableStateOf<NativeSelection?>(null) }
+    var quote by remember { mutableStateOf<client.wexbooks.reader.QuoteDraft?>(null) }
+    var note by remember { mutableStateOf<NativeNote?>(null) }
+    var image by remember { mutableStateOf<String?>(null) }
+    val annotationFlow =
+        remember(session.book.id) { model.repository.dao.annotations(session.book.id) }
+    val savedFlow =
+        remember(annotationFlow, engine) {
+            annotationFlow
+                .map { annotations ->
+                    annotations.mapNotNull { annotation ->
+                        client.wexbooks.data.ReaderPositionCodec.decode(annotation.locatorJson)
+                            ?.takeIf { it.resource == "native" }
+                            ?.let { start ->
+                                NativeSelection(
+                                    start,
+                                    engine.document.position(
+                                        annotation.endBlock,
+                                        annotation.endOffset,
+                                    ),
+                                )
+                            }
+                    }
+                }
+                .flowOn(Dispatchers.Default)
+        }
+    val saved by savedFlow.collectAsStateWithLifecycle(emptyList())
+    val clipboard = LocalClipboard.current
+    LaunchedEffect(render.page?.start, preferences.fontSize) { selection = null }
     var bookmarked by remember(position) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(
@@ -80,7 +119,15 @@ fun NativeReaderScreen(
                 resolver,
             )
     }
-    BackHandler { if (sheet != null) sheet = null else model.closeBook() }
+    BackHandler {
+        when {
+            quote != null -> quote = null
+            image != null -> image = null
+            sheet != null -> sheet = null
+            selection != null -> selection = null
+            else -> model.closeBook()
+        }
+    }
     Box(Modifier.fillMaxSize().background(colors.background).testTag("native-reader")) {
         Box(
             Modifier.fillMaxSize()
@@ -91,52 +138,35 @@ fun NativeReaderScreen(
         ) {
             val page = render.page
             if (page != null) {
-                AnimatedContent(
+                NativePageContent(
+                    engine,
                     page,
-                    modifier = Modifier.fillMaxSize(),
-                    contentKey = { it.start.block to it.start.offset },
-                    transitionSpec = {
-                        WexMotion.pageTransition(preferences.reduceMotion, render.forward)
-                            .using(null)
+                    selection,
+                    saved.filter {
+                        it.end.block >= page.start.block && it.start.block <= page.end.block
                     },
-                    label = "native page",
-                ) { visible ->
-                    val visibleText =
-                        remember(visible) {
-                            visible.fragments.joinToString("\n\n") { fragment ->
-                                fragment.layout.layoutInput.text.text.substring(
-                                    fragment.layout.getLineStart(fragment.firstLine),
-                                    fragment.layout.getLineEnd(fragment.lastLine, true),
-                                )
+                    onSelection = { selection = it },
+                    onLink = { id ->
+                        val footnote = engine.document.notes[id]
+                        if (footnote != null) {
+                            note = footnote
+                            sheet = "note"
+                        } else
+                            engine.document.targets[id]?.let { block ->
+                                scope.launch { engine.goTo(engine.document.position(block, 0)) }
                             }
-                        }
-                    Canvas(
-                        Modifier.fillMaxSize().testTag("native-page").semantics {
-                            text = AnnotatedString(visibleText)
-                        }
-                    ) {
-                        visible.fragments.forEach { fragment ->
-                            clipRect(
-                                top = fragment.top,
-                                bottom =
-                                    (fragment.top + fragment.height).coerceAtMost(
-                                        size.height.toFloat()
-                                    ),
-                            ) {
-                                drawText(
-                                    fragment.layout,
-                                    color = colors.onBackground,
-                                    topLeft =
-                                        Offset(
-                                            0f,
-                                            fragment.top -
-                                                fragment.layout.getLineTop(fragment.firstLine),
-                                        ),
-                                )
-                            }
-                        }
-                    }
-                }
+                                ?: run {
+                                    note =
+                                        NativeNote(
+                                            "Сноска",
+                                            "В файле книги нет текста этой сноски.",
+                                        )
+                                    sheet = "note"
+                                }
+                    },
+                    onImage = { image = it },
+                    motion = textMotion,
+                )
             } else if (render.error != null) {
                 Text(render.error!!, Modifier.align(Alignment.Center))
             } else CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -165,7 +195,7 @@ fun NativeReaderScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
+                WexAnimatedText(
                     "${((position?.progression ?: 0.0) * 100).toInt()}% прочитано · ${session.book.format}",
                     fontSize = 11.sp,
                     color = colors.onSurfaceVariant,
@@ -190,40 +220,78 @@ fun NativeReaderScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 16.dp)
                 .wexGlass(backdrop, darkTheme, preferences.reduceTransparency, 32.dp)
+                .animateContentSize(WexMotion.springResponse(preferences.reduceMotion))
                 .padding(horizontal = 8.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ReaderIconAction(
-                WexIcons.Back,
-                "Предыдущая страница",
-                enabled = render.page?.hasPrevious == true,
-            ) {
-                scope.launch { engine.backward() }
-            }
-            TextButton(onClick = { sheet = "type" }, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Aa", fontSize = 21.sp)
-            }
-            ReaderIconAction(
-                WexIcons.Bookmark,
-                "Добавить закладку",
-                enabled = render.page != null,
-                selected = bookmarked,
-                modifier = Modifier.testTag("add-bookmark"),
-            ) {
-                model.bookmark(session)
-                bookmarked = true
-            }
-            ReaderIconAction(if (darkTheme) WexIcons.Sun else WexIcons.Moon, "Сменить тему") {
-                model.updatePreferences { it.copy(darkTheme = !darkTheme) }
-            }
-            ReaderIconAction(
-                WexIcons.Arrow,
-                "Следующая страница",
-                enabled = render.page?.hasNext == true,
-            ) {
-                scope.launch { engine.forward() }
+            if (selection != null) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            val text = selection?.draft(engine.document)?.text ?: return@launch
+                            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Цитата", text)))
+                            selection = null
+                        }
+                    },
+                    modifier = Modifier.testTag("copy-selection"),
+                ) {
+                    Text("Копировать")
+                }
+                TextButton(
+                    onClick = { quote = selection?.draft(engine.document) },
+                    modifier = Modifier.testTag("quote-selection"),
+                ) {
+                    Text("В заметки")
+                }
+                TextButton(onClick = { selection = null }) { Text("Отмена") }
+            } else {
+                ReaderIconAction(
+                    WexIcons.Back,
+                    "Предыдущая страница",
+                    enabled = render.page?.hasPrevious == true,
+                ) {
+                    scope.launch { engine.backward() }
+                }
+                TextButton(
+                    onClick = { sheet = "type" },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("Aa", fontSize = 21.sp)
+                }
+                ReaderIconAction(
+                    WexIcons.Bookmark,
+                    "Добавить закладку",
+                    enabled = render.page != null,
+                    selected = bookmarked,
+                    modifier = Modifier.testTag("add-bookmark"),
+                ) {
+                    model.bookmark(session)
+                    bookmarked = true
+                }
+                ReaderIconAction(if (darkTheme) WexIcons.Sun else WexIcons.Moon, "Сменить тему") {
+                    model.updatePreferences { it.copy(darkTheme = !darkTheme) }
+                }
+                ReaderIconAction(
+                    WexIcons.Arrow,
+                    "Следующая страница",
+                    enabled = render.page?.hasNext == true,
+                ) {
+                    scope.launch { engine.forward() }
+                }
             }
         }
+        quote?.let { draft ->
+            QuoteEditor(
+                draft.text,
+                onDismiss = {
+                    quote = null
+                    selection = null
+                },
+            ) { text ->
+                model.saveQuote(session, draft, text)
+            }
+        }
+        image?.let { id -> NativeImageViewer(engine, id) { image = null } }
         if (sheet != null)
             ModalBottomSheet(
                 onDismissRequest = { sheet = null },
@@ -250,7 +318,7 @@ fun NativeReaderScreen(
                             ) {
                                 Text("А−", fontSize = 20.sp)
                             }
-                            Text(
+                            WexAnimatedText(
                                 "${preferences.fontSize}",
                                 Modifier.testTag("font-size"),
                                 fontSize = 20.sp,
@@ -267,13 +335,51 @@ fun NativeReaderScreen(
                             }
                         }
                         Text(
-                            "Нативная вёрстка WexBooks · постраничное чтение",
+                            "Зажмите слово и проведите пальцем по тексту, чтобы скопировать фразу или сохранить её в заметки.\n\nНативная вёрстка WexBooks · постраничное чтение",
                             Modifier.padding(top = 16.dp),
                             fontSize = 12.sp,
                             color = colors.onSurfaceVariant,
                         )
                     }
-                else {
+                else if (sheet == "note") {
+                    val paragraphs by
+                        produceState<List<String>>(emptyList(), note) {
+                            value =
+                                withContext(Dispatchers.Default) {
+                                    note?.text.orEmpty().split("\n\n").flatMap { it.chunked(4096) }
+                                }
+                        }
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .heightIn(max = 520.dp)
+                            .padding(horizontal = 24.dp)
+                            .padding(bottom = 32.dp)
+                            .testTag("footnote-sheet")
+                    ) {
+                        Text(note?.title ?: "Сноска", fontSize = 24.sp)
+                        SelectionContainer {
+                            LazyColumn(
+                                Modifier.fillMaxWidth().heightIn(max = 340.dp).padding(top = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                items(paragraphs) { paragraph ->
+                                    Text(
+                                        paragraph,
+                                        fontSize = preferences.fontSize.sp,
+                                        lineHeight = (preferences.fontSize * 1.55f).sp,
+                                        color = colors.onSurface,
+                                    )
+                                }
+                            }
+                        }
+                        TextButton(
+                            onClick = { sheet = null },
+                            modifier = Modifier.align(Alignment.End).padding(top = 16.dp),
+                        ) {
+                            Text("К чтению")
+                        }
+                    }
+                } else {
                     Text(
                         "Оглавление",
                         Modifier.padding(horizontal = 24.dp, vertical = 12.dp),

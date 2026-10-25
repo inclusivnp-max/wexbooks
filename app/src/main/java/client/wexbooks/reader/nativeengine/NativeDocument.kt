@@ -6,14 +6,16 @@ enum class BlockKind {
     Paragraph,
     Heading,
     Verse,
+    Image,
 }
 
 enum class MarkKind {
     Strong,
     Emphasis,
+    Link,
 }
 
-data class InlineMark(val start: Int, val end: Int, val kind: MarkKind)
+data class InlineMark(val start: Int, val end: Int, val kind: MarkKind, val target: String? = null)
 
 data class NativeBlock(
     val text: String,
@@ -21,15 +23,24 @@ data class NativeBlock(
     val id: String,
     val marks: List<InlineMark> = emptyList(),
     val continuation: Boolean = false,
+    val imageId: String? = null,
 )
 
 data class NativeChapter(val title: String, val block: Int)
+
+data class NativeNote(val title: String, val text: String)
+
+/** Encoded resources are bounded at import; bitmaps are sampled only when visible. */
+class NativeImage(val bytes: ByteArray, val width: Int, val height: Int)
 
 class NativeDocument(
     val title: String,
     val author: String,
     val blocks: List<NativeBlock>,
     val chapters: List<NativeChapter>,
+    val notes: Map<String, NativeNote> = emptyMap(),
+    val images: Map<String, NativeImage> = emptyMap(),
+    val targets: Map<String, Int> = emptyMap(),
 ) {
     private val offsets =
         IntArray(blocks.size + 1).apply {

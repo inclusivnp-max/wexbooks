@@ -21,7 +21,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import client.wexbooks.data.BookEntity
+import client.wexbooks.data.SavedAnnotation
 import client.wexbooks.data.SavedBookmark
+import client.wexbooks.ui.components.WexDialog
 import client.wexbooks.ui.components.WexIcons
 
 @Composable
@@ -109,26 +111,21 @@ fun BookLibraryScreen(
             }
     }
     deletion?.let { book ->
-        AlertDialog(
+        WexDialog(
+            title = "Удалить книгу?",
             onDismissRequest = { deletion = null },
-            title = { Text("Удалить книгу?") },
-            text = {
-                Text(
-                    "«${book.title}» и её закладки исчезнут из библиотеки. Исходный файл останется на месте."
-                )
+            confirmLabel = "Удалить",
+            dismissLabel = "Оставить",
+            onConfirm = {
+                onDelete(book)
+                true
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDelete(book)
-                        deletion = null
-                    }
-                ) {
-                    Text("Удалить")
-                }
-            },
-            dismissButton = { TextButton(onClick = { deletion = null }) { Text("Оставить") } },
-        )
+        ) {
+            Text(
+                "«${book.title}» и её закладки и цитаты исчезнут из библиотеки. Исходный файл останется на месте.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -208,6 +205,9 @@ fun SavedBookmarksScreen(
     bookmarks: List<SavedBookmark>,
     onOpen: (SavedBookmark) -> Unit,
     onDelete: (String) -> Unit,
+    annotations: List<SavedAnnotation> = emptyList(),
+    onOpenAnnotation: (SavedAnnotation) -> Unit = {},
+    onDeleteAnnotation: (String) -> Unit = {},
 ) {
     LazyColumn(
         Modifier.fillMaxSize().testTag("notes-screen"),
@@ -227,6 +227,40 @@ fun SavedBookmarksScreen(
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        items(annotations, key = { "quote-${it.id}" }) { quote ->
+            Column(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    .clickable { onOpenAnnotation(quote) }
+                    .testTag("saved-quote-${quote.id}")
+                    .padding(18.dp)
+            ) {
+                Text(
+                    "«${quote.quote}»",
+                    fontSize = 18.sp,
+                    fontFamily = FontFamily.Serif,
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (quote.note.isNotBlank())
+                    Text(quote.note, Modifier.padding(top = 12.dp), fontSize = 14.sp)
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        quote.bookTitle,
+                        Modifier.weight(1f),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = { onDeleteAnnotation(quote.id) }) {
+                        Text("Убрать", fontSize = 11.sp)
+                    }
+                }
+            }
         }
         items(bookmarks, key = { it.id }) { bookmark ->
             Row(

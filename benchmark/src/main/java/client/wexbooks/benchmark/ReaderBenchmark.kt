@@ -23,6 +23,34 @@ import org.junit.runner.RunWith
 class ReaderBenchmark {
     @get:Rule val benchmark = MacrobenchmarkRule()
     private val target = "client.wexbooks.benchmark"
+    private val pageIterations
+        get() =
+            InstrumentationRegistry.getArguments()
+                .getString("pageIterations")
+                ?.toIntOrNull()
+                ?.coerceIn(1, 10) ?: 3
+
+    /** Setup is not a tap benchmark: an incoming heads-up must not steal this click. */
+    private fun clickSetupControl(description: String) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        fun find(
+            node: android.view.accessibility.AccessibilityNodeInfo
+        ): android.view.accessibility.AccessibilityNodeInfo? {
+            if (node.packageName?.toString() != target) return null
+            if (node.contentDescription?.toString() == description && node.isClickable) return node
+            for (i in 0 until node.childCount) node.getChild(i)?.let { child ->
+                find(child)?.let {
+                    return it
+                }
+            }
+            return null
+        }
+        val roots =
+            automation.windows.mapNotNull { it.root } + listOfNotNull(automation.rootInActiveWindow)
+        val control = roots.firstNotNullOfOrNull { find(it) }
+        checkNotNull(control) { "Reader setup control missing: $description" }
+        check(control.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
+    }
 
     @Test
     fun libraryColdStart() =
@@ -43,7 +71,7 @@ class ReaderBenchmark {
             packageName = target,
             metrics = listOf(FrameTimingMetric()),
             compilationMode = CompilationMode.None(),
-            iterations = 3,
+            iterations = pageIterations,
             setupBlock = {
                 pressHome()
                 killProcess()
@@ -68,9 +96,27 @@ class ReaderBenchmark {
                     checkNotNull(button).click()
                 }
                 check(device.wait(Until.hasObject(By.textContains("% прочитано")), 25_000))
-                device.findObject(By.desc("Оглавление")).click()
-                check(device.wait(Until.hasObject(By.text("Искусство не спешить")), 5_000))
-                device.findObject(By.text("Искусство не спешить")).click()
+                clickSetupControl("Оглавление")
+                device.waitForIdle()
+                val chapter =
+                    device.wait(
+                        Until.findObject(By.desc("Открыть главу: Искусство не спешить")),
+                        5_000,
+                    )
+                if (chapter == null) {
+                    val path =
+                        InstrumentationRegistry.getArguments()
+                            .getString("additionalTestOutputDir")
+                            ?.let { File(it) }
+                    if (path != null) {
+                        path.mkdirs()
+                        device.takeScreenshot(File(path, "epub-toc-failure.png"))
+                        File(path, "epub-toc-failure.xml").outputStream().use {
+                            device.dumpWindowHierarchy(it)
+                        }
+                    }
+                }
+                checkNotNull(chapter).click()
                 device.waitForIdle()
             },
         ) {
@@ -86,7 +132,7 @@ class ReaderBenchmark {
             packageName = target,
             metrics = listOf(FrameTimingMetric()),
             compilationMode = CompilationMode.None(),
-            iterations = 3,
+            iterations = pageIterations,
             setupBlock = {
                 val context = InstrumentationRegistry.getInstrumentation().context
                 val file = File(context.cacheDir, "fixtures/Native benchmark.txt")
@@ -132,7 +178,7 @@ class ReaderBenchmark {
                 }
                 checkNotNull(book).click()
                 check(device.wait(Until.hasObject(By.textContains("% прочитано")), 20_000))
-                device.findObject(By.desc("Оглавление")).click()
+                clickSetupControl("Оглавление")
                 check(device.wait(Until.hasObject(By.text("Глава 1. Нативный тест")), 5_000))
                 device.findObject(By.text("Глава 1. Нативный тест")).click()
                 device.waitForIdle()

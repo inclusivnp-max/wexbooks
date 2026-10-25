@@ -35,12 +35,22 @@ data class NativeFragment(
     val height: Float,
 )
 
+data class NativeImageFragment(
+    val block: Int,
+    val id: String,
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+)
+
 data class NativePage(
     val start: ReaderPosition,
     val end: ReaderPosition,
     val fragments: List<NativeFragment>,
     val hasPrevious: Boolean,
     val hasNext: Boolean,
+    val images: List<NativeImageFragment> = emptyList(),
 )
 
 /** Thread-confined paginator. Only a handful of pages/paragraph layouts ever live in RAM. */
@@ -54,7 +64,9 @@ class NativePaginator(
     private val layouts =
         BoundedCache<Int, TextLayoutResult>(24, 2_000_000) { it.layoutInput.text.length * 16 + 512 }
     private val pages =
-        BoundedCache<Pair<Int, Int>, NativePage>(5, 128_000) { it.fragments.size * 96 + 128 }
+        BoundedCache<Pair<Int, Int>, NativePage>(5, 128_000) {
+            (it.fragments.size + it.images.size) * 96 + 128
+        }
     private val previous = BoundedCache<Pair<Int, Int>, ReaderPosition>(4096, 131_072) { 32 }
     private val gap: Float
         get() = key.fontSize * key.density * key.fontScale * 0.6f
@@ -75,12 +87,38 @@ class NativePaginator(
             return it
         }
         val fragments = ArrayList<NativeFragment>()
+        val images = ArrayList<NativeImageFragment>()
+        var firstPosition: ReaderPosition? = null
         var index = block
         var character = offset
         var top = 0f
         var end = document.position(block, offset)
         while (index < document.blocks.size) {
             coroutineContext.ensureActive()
+            if (document.blocks[index].kind == BlockKind.Image) {
+                // Images occupy one bounded, non-splitting fragment and use document anchors too.
+                val (width, height) = imageSize(index)
+                val spacing = if (firstPosition == null) 0f else gap
+                if (firstPosition != null && top + spacing + height > key.height) break
+                firstPosition = firstPosition ?: document.position(index, 0)
+                images +=
+                    NativeImageFragment(
+                        index,
+                        document.blocks[index].imageId.orEmpty(),
+                        (key.width - width) / 2f,
+                        top + spacing,
+                        width,
+                        height,
+                    )
+                top += spacing + height
+                index++
+                character = 0
+                end =
+                    if (index < document.blocks.size) document.position(index, 0)
+                    else document.position(document.blocks.lastIndex, 1)
+                if (top + gap >= key.height) break
+                continue
+            }
             val layout = layout(index)
             val firstLine =
                 layout.getLineForOffset(
@@ -90,11 +128,11 @@ class NativePaginator(
                 )
             val lineTop = layout.getLineTop(firstLine)
             val spacing =
-                if (fragments.isEmpty() || document.blocks[index].continuation) 0f else gap
+                if (firstPosition == null || document.blocks[index].continuation) 0f else gap
             val available = key.height - top - spacing
             val minimum = layout.getLineBottom(firstLine) - lineTop
             if (
-                fragments.isNotEmpty() &&
+                firstPosition != null &&
                     (minimum > available ||
                         (document.blocks[index].kind == BlockKind.Heading &&
                             available < layout.size.height - lineTop + minimum * 2))
@@ -115,6 +153,8 @@ class NativePaginator(
                 (layout.getLineBottom(lastLine) - lineTop).coerceAtMost(
                     available.coerceAtLeast(minimum)
                 )
+            firstPosition =
+                firstPosition ?: document.position(index, layout.getLineStart(firstLine))
             fragments += NativeFragment(index, layout, firstLine, lastLine, top + spacing, height)
             top += spacing + height
             val next = layout.getLineEnd(lastLine, visibleEnd = false)
@@ -130,16 +170,23 @@ class NativePaginator(
                     document.position(document.blocks.lastIndex, document.blocks.last().text.length)
             if (top + minimum >= key.height) break
         }
-        val first = fragments.first()
-        val start = document.position(first.block, first.layout.getLineStart(first.firstLine))
+        val start = firstPosition ?: document.position(block, offset)
         val atEnd =
             end.block == document.blocks.lastIndex &&
                 end.offset >= document.blocks.last().text.length
-        return NativePage(start, end, fragments, start.block > 0 || start.offset > 0, !atEnd).also {
-            pages.put(cacheKey, it)
-            pages.put(start.block to start.offset, it)
-            if (it.hasNext) previous.put(end.block to end.offset, start)
-        }
+        return NativePage(
+                start,
+                end,
+                fragments,
+                start.block > 0 || start.offset > 0,
+                !atEnd,
+                images,
+            )
+            .also {
+                pages.put(cacheKey, it)
+                pages.put(start.block to start.offset, it)
+                if (it.hasNext) previous.put(end.block to end.offset, start)
+            }
     }
 
     suspend fun pageBefore(position: ReaderPosition): NativePage {
@@ -154,6 +201,15 @@ class NativePaginator(
             coroutineContext.ensureActive()
             val text = document.blocks[index].text
             if (offset <= 0) {
+                index--
+                if (index >= 0) offset = document.blocks[index].text.length
+                continue
+            }
+            if (document.blocks[index].kind == BlockKind.Image) {
+                val height = imageSize(index).second
+                if (remaining < height) return pageAt(start)
+                remaining -= height + gap
+                start = document.position(index, 0)
                 index--
                 if (index >= 0) offset = document.blocks[index].text.length
                 continue
@@ -174,6 +230,13 @@ class NativePaginator(
         return pageAt(start)
     }
 
+    private fun imageSize(index: Int): Pair<Float, Float> {
+        val image = document.images[document.blocks[index].imageId]
+        val ratio = if (image != null) image.width.toFloat() / image.height else 1.5f
+        val width = minOf(key.width.toFloat(), key.height * 0.65f * ratio)
+        return width to (width / ratio).coerceAtLeast(1f)
+    }
+
     private fun layout(index: Int): TextLayoutResult {
         layouts.get(index)?.let {
             return it
@@ -184,9 +247,15 @@ class NativePaginator(
                 .apply {
                     block.marks.forEach { mark ->
                         addStyle(
-                            if (mark.kind == MarkKind.Strong)
-                                SpanStyle(fontWeight = FontWeight.Bold)
-                            else SpanStyle(fontStyle = FontStyle.Italic),
+                            when (mark.kind) {
+                                MarkKind.Strong -> SpanStyle(fontWeight = FontWeight.Bold)
+                                MarkKind.Emphasis -> SpanStyle(fontStyle = FontStyle.Italic)
+                                MarkKind.Link ->
+                                    SpanStyle(
+                                        textDecoration =
+                                            androidx.compose.ui.text.style.TextDecoration.Underline
+                                    )
+                            },
                             mark.start,
                             mark.end,
                         )

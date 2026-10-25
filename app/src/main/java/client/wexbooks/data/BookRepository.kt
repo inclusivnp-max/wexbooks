@@ -28,6 +28,7 @@ class BookRepository(
     val dao = database.library()
     val books = dao.observeBooks()
     val bookmarks = dao.observeBookmarks()
+    val annotations = dao.observeAnnotations()
     private val importMutex = Mutex()
     private val directory = File(context.filesDir, "books").apply { mkdirs() }
 

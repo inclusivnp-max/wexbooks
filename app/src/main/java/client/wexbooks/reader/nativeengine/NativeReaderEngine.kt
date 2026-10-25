@@ -21,7 +21,10 @@ class NativeReaderEngine : ReaderEngine {
     private val loading = Mutex()
     private val documents =
         BoundedCache<String, NativeDocument>(2, 8_000_000) {
-            it.characterCount * 2 + it.blocks.size * 128
+            it.characterCount * 2 +
+                it.notes.values.sumOf { note -> (note.title.length + note.text.length) * 2 } +
+                it.blocks.size * 128 +
+                it.images.values.sumOf { image -> image.bytes.size }
         }
 
     suspend fun document(
@@ -66,6 +69,39 @@ class NativeReaderSession(
         document.chapters.map { ReaderChapter(it.title, document.position(it.block, 0)) }
     private val _render = MutableStateFlow(NativeRenderState())
     val render = _render.asStateFlow()
+    private val imageLoading = Mutex()
+    private val bitmaps =
+        BoundedCache<String, android.graphics.Bitmap>(3, 8 * 1024 * 1024) { it.allocationByteCount }
+
+    suspend fun image(id: String): android.graphics.Bitmap? =
+        withContext(Dispatchers.IO) {
+            imageLoading.withLock {
+                if (closed.get()) return@withLock null
+                bitmaps.get(id)?.let {
+                    return@withLock it
+                }
+                val image = document.images[id] ?: return@withLock null
+                var sample = 1
+                while (
+                    maxOf(image.width, image.height) / sample > 1440 ||
+                        image.width.toLong() * image.height / (sample.toLong() * sample) > 1_500_000
+                ) sample *= 2
+                val options =
+                    android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                val bitmap =
+                    android.graphics.BitmapFactory.decodeByteArray(
+                        image.bytes,
+                        0,
+                        image.bytes.size,
+                        options,
+                    )
+                if (bitmap != null && !closed.get()) bitmaps.put(id, bitmap)
+                bitmap
+            }
+        }
+
+    fun imageCacheStats() = bitmaps.stats()
+
     private var paginator: NativePaginator? = null
     private var request: Job? = null
     private var prefetch: Job? = null
@@ -147,6 +183,7 @@ class NativeReaderSession(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
+        bitmaps.clear()
         // Release cache references without touching the worker's mutable caches from another
         // thread.
         paginator = null

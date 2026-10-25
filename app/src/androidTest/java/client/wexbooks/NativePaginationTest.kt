@@ -45,4 +45,51 @@ class NativePaginationTest {
             assertTrue(paginator.stats().weight <= 128_000)
         }
     }
+
+    @Test
+    fun illustrationPagesAdvanceToTheEndWithoutSplittingImages() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val document =
+            NativeDocument(
+                "Images",
+                "Author",
+                listOf(
+                    NativeBlock("Before ".repeat(30), BlockKind.Paragraph, "before"),
+                    NativeBlock("\uFFFC", BlockKind.Image, "image", imageId = "pic"),
+                    NativeBlock("After ".repeat(30), BlockKind.Paragraph, "after"),
+                    NativeBlock("\uFFFC", BlockKind.Image, "last-image", imageId = "pic"),
+                ),
+                emptyList(),
+                images = mapOf("pic" to NativeImage(byteArrayOf(), 800, 450)),
+            )
+        val resolver = createFontFamilyResolver(context)
+        withContext(Dispatchers.Default) {
+            val paginator =
+                NativePaginator(
+                    document,
+                    LayoutKey(300, 280, 22, 1f, 1f, LayoutDirection.Ltr),
+                    resolver,
+                )
+            var page = paginator.pageAt(document.position(0, 0))
+            var images = 0
+            var count = 0
+            while (true) {
+                count++
+                assertTrue("Pagination must terminate", count < 50)
+                images += page.images.size
+                page.images.forEach {
+                    assertTrue(it.top >= 0 && it.top + it.height <= 280)
+                    assertEquals(800f / 450, it.width / it.height, 0.001f)
+                }
+                if (!page.hasNext) break
+                val old = page
+                page = paginator.pageAt(old.end)
+                assertEquals(old.end, page.start)
+                assertTrue(page.end.progression > old.end.progression)
+                assertEquals(old.start, paginator.pageBefore(page.start).start)
+            }
+            assertEquals(2, images)
+            assertEquals(1.0, page.end.progression, 0.0)
+        }
+    }
 }

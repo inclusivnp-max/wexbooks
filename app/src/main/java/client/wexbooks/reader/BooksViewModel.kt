@@ -15,6 +15,13 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+data class QuoteDraft(
+    val position: ReaderPosition,
+    val endBlock: Int,
+    val endOffset: Int,
+    val text: String,
+)
+
 class OpenedBook(val book: BookEntity, val reader: ReaderSession) {
     fun close() = reader.close()
 }
@@ -26,6 +33,12 @@ class BooksViewModel(application: Application) : AndroidViewModel(application) {
         repository.books.stateIn(viewModelScope, SharingStarted.WhileSubscribed(0), emptyList())
     val bookmarks =
         repository.bookmarks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(0), emptyList())
+    val annotations =
+        repository.annotations.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(0),
+            emptyList(),
+        )
     private val _preferences = MutableStateFlow<ReaderPreferences?>(null)
     val preferences = _preferences.asStateFlow()
     private val _opened = MutableStateFlow<OpenedBook?>(null)
@@ -208,6 +221,26 @@ class BooksViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 ?.title ?: "Закладка · ${(position.progression * 100).toInt()}%"
         viewModelScope.launch { repository.addBookmark(session.book.id, position, label) }
+    }
+
+    suspend fun saveQuote(session: OpenedBook, draft: QuoteDraft, note: String) {
+        require(draft.text.isNotBlank() && draft.text.length <= 12_000)
+        repository.dao.insertAnnotation(
+            client.wexbooks.data.AnnotationEntity(
+                java.util.UUID.randomUUID().toString(),
+                session.book.id,
+                ReaderPositionCodec.encode(draft.position),
+                draft.endBlock,
+                draft.endOffset,
+                draft.text,
+                note.take(2000).trim(),
+                System.currentTimeMillis(),
+            )
+        )
+    }
+
+    fun deleteAnnotation(id: String) {
+        viewModelScope.launch { repository.dao.deleteAnnotation(id) }
     }
 
     fun deleteBook(book: BookEntity) {
