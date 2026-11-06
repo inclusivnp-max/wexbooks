@@ -1,5 +1,13 @@
 # WexBooks
 
+<p align="left">
+  <img src="https://img.shields.io/badge/Android-SDK%2026+-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android SDK 26+" />
+  <img src="https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin 2.0+" />
+  <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
+  <img src="https://img.shields.io/badge/Design-Liquid%20Glass%20%26%20M3-9C27B0?style=for-the-badge" alt="Liquid Glass" />
+  <img src="https://img.shields.io/badge/Formats-EPUB%20%7C%20FB2%20%7C%20TXT-00BCD4?style=for-the-badge" alt="EPUB FB2 TXT" />
+</p>
+
 Android-читалка на Kotlin и Jetpack Compose: спокойная книжная типографика и iOS-inspired Liquid Glass на элементах управления.
 
 ## Уже работает
