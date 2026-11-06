@@ -40,8 +40,8 @@ Android-читалка на Kotlin и Jetpack Compose: спокойная кни
 Release использует локальные `keystore.properties` и `keystore/wexbooks-release.jks`. Тестовая сборка называется **WexBooks Dev** и имеет отдельный applicationId `.dev`.
 
 ```bash
-ANDROID_SERIAL=47101FDAS0028Q ./gradlew :app:connectedDebugAndroidTest
-ANDROID_SERIAL=47101FDAS0028Q ./gradlew :benchmark:connectedBenchmarkAndroidTest
+ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :app:connectedDebugAndroidTest
+ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :benchmark:connectedBenchmarkAndroidTest
 ```
 
 Тестируем на Pixel 9 Pro XL через USB ADB; эмуляторы не запускаем. История исходников — в Git, без дублирующих папок проекта. Удалённый репозиторий не подключён.

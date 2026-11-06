@@ -33,7 +33,7 @@ Macrobenchmark 1.5.0 запускает отдельное приложение 
 ## Повторение и контроль
 
 ```bash
-ANDROID_SERIAL=47101FDAS0028Q ./gradlew :benchmark:connectedBenchmarkAndroidTest
+ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :benchmark:connectedBenchmarkAndroidTest
 python3 tools/check_performance.py benchmark/results/baseline.json benchmark/results/pixel-20261025.json
 ```
 
@@ -43,7 +43,7 @@ python3 tools/check_performance.py benchmark/results/baseline.json benchmark/res
 
 ## Этап сносок, цитат и подмены букв — 25 октября
 
-Сравнение с предыдущим рабочим ReaderCore (`pixel-20261025.json`), а не с экспериментально медленным вариантом. Исходники текущего приложения: `ad00934`. Команда `ANDROID_SERIAL=47101FDAS0028Q ./gradlew :benchmark:connectedBenchmarkAndroidTest` завершилась `BUILD SUCCESSFUL in 3m 5s`, exit 0: три сценария без ошибок и пропусков. Те же 5 стартов и 3 × 12 перелистываний, CompilationMode.None.
+Сравнение с предыдущим рабочим ReaderCore (`pixel-20261025.json`), а не с экспериментально медленным вариантом. Исходники текущего приложения: `ad00934`. Команда `ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :benchmark:connectedBenchmarkAndroidTest` завершилась `BUILD SUCCESSFUL in 3m 5s`, exit 0: три сценария без ошибок и пропусков. Те же 5 стартов и 3 × 12 перелистываний, CompilationMode.None.
 
 | Показатель | ReaderCore MVP | Чтение + text morph |
 |---|---:|---:|
@@ -67,7 +67,7 @@ python3 tools/check_performance.py benchmark/results/pixel-20261025.json benchma
 
 ## Комфорт чтения и оптимизация панелей
 
-Исходники: `754f526` и `71540c1`. Полный повтор: `ANDROID_SERIAL=47101FDAS0028Q ./gradlew :benchmark:connectedBenchmarkAndroidTest` → `BUILD SUCCESSFUL in 3m 37s`, exit 0, три сценария. Та же методика: 5 холодных стартов и 3 × 12 перелистываний.
+Исходники: `754f526` и `71540c1`. Полный повтор: `ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :benchmark:connectedBenchmarkAndroidTest` → `BUILD SUCCESSFUL in 3m 37s`, exit 0, три сценария. Та же методика: 5 холодных стартов и 3 × 12 перелистываний.
 
 | Показатель | До настроек | После настроек и оптимизации |
 |---|---:|---:|
@@ -89,7 +89,7 @@ Exit 0. CPU P95 EPUB вырос примерно на 5.8% и остаётся �
 
 ## Разворачивание страницы и защита камеры
 
-Код `fac0118` + `a6f7409`. Команда `ANDROID_SERIAL=47101FDAS0028Q ./gradlew :benchmark:connectedBenchmarkAndroidTest` завершилась `BUILD SUCCESSFUL in 5m 1s`, exit 0: 5/5 функциональных сценариев замера. Сохранены 5 холодных стартов и 3 × 12 перелистываний; добавлены native/EPUB focus-переходы, каждый 2 × 4 цикла открыть/закрыть (16 переходов на формат). CompilationMode.None, тот же Pixel. Результат: `pixel-20261025-focus.json`.
+Код `fac0118` + `a6f7409`. Команда `ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :benchmark:connectedBenchmarkAndroidTest` завершилась `BUILD SUCCESSFUL in 5m 1s`, exit 0: 5/5 функциональных сценариев замера. Сохранены 5 холодных стартов и 3 × 12 перелистываний; добавлены native/EPUB focus-переходы, каждый 2 × 4 цикла открыть/закрыть (16 переходов на формат). CompilationMode.None, тот же Pixel. Результат: `pixel-20261025-focus.json`.
 
 | Показатель | До перехода viewport | После |
 |---|---:|---:|

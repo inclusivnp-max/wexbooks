@@ -1,11 +1,11 @@
 # Проверки чтения, цитат, диалогов и text morph
 
-Дата: 25 октября 2026. Тестовый телефон: Pixel 9 Pro XL, Android 17 / API 37, USB `47101FDAS0028Q`. Эмулятор выключен.
+Дата: 25 октября 2026. Тестовый телефон: Pixel 9 Pro XL, Android 17 / API 37, USB `<YOUR_DEVICE_SERIAL>`. Эмулятор выключен.
 
 ## Автотесты
 
 ```bash
-ANDROID_SERIAL=47101FDAS0028Q ./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleRelease :app:bundleRelease
+ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleRelease :app:bundleRelease
 ```
 
 Результат: `BUILD SUCCESSFUL in 1m 21s`, exit 0. 40 unit-тестов и 30 Android-тестов, ошибок и пропусков нет.
@@ -23,7 +23,7 @@ ANDROID_SERIAL=47101FDAS0028Q ./gradlew :app:testDebugUnitTest :app:connectedDeb
 ## Производительность
 
 ```bash
-ANDROID_SERIAL=47101FDAS0028Q ./gradlew :benchmark:connectedBenchmarkAndroidTest
+ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :benchmark:connectedBenchmarkAndroidTest
 ```
 
 Результат текущего этапа: `BUILD SUCCESSFUL in 3m 5s`, exit 0. Три сценария: холодный старт, EPUB, native TXT. Итоговые числа и ограничения выводов — в [PERFORMANCE.md](PERFORMANCE.md). Проверка всех шести порогов `tools/check_performance.py` к предыдущему ReaderCore завершилась exit 0; файл `benchmark/results/pixel-20261025-reading.json`.
@@ -42,7 +42,7 @@ APK проверен через apksigner: `Verifies`, v3=true, exit 0. Суще
 
 ## Проверка установленной release-сборки
 
-`adb -s 47101FDAS0028Q install -r app/build/outputs/apk/release/app-release.apk` → `Success`, exit 0. Обновлённое основное приложение `client.wexbooks` установлено и запускается после добавления text morph и миграции 3. Установка выполнена через `-r`, без очистки пользовательских данных. Dev/benchmark-приложения имеют отдельные applicationId; тестовые данные не смешиваются с основной библиотекой.
+`adb -s <YOUR_DEVICE_SERIAL> install -r app/build/outputs/apk/release/app-release.apk` → `Success`, exit 0. Обновлённое основное приложение `client.wexbooks` установлено и запускается после добавления text morph и миграции 3. Установка выполнена через `-r`, без очистки пользовательских данных. Dev/benchmark-приложения имеют отдельные applicationId; тестовые данные не смешиваются с основной библиотекой.
 
 Предыдущая установленная release-сборка проверялась на настоящей EPUB из комплектного авторского примера. Проверены библиотека, страница чтения, иконки и панель Aa в светлом и тёмном оформлении. Скриншоты сохранены в `app/build/reports/pixel-colors/`.
 
@@ -80,7 +80,7 @@ APK проверен через apksigner: `Verifies`, v3=true, exit 0. Суще
 
 Шаблон Android заменён раскрытой книгой на бирюзовом фоне. Добавлен отдельный monochrome drawable; обновлены обе adaptive-иконки и все десять legacy WebP. SVG/PNG 512 px и экспорт из Android-векторов находятся в `artwork/launcher` и `tools/export_launcher_icon.py`.
 
-База: `./gradlew :app:testDebugUnitTest` → `BUILD SUCCESSFUL in 560ms`, exit 0, 40 unit. После замены: `ANDROID_SERIAL=47101FDAS0028Q ./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleRelease :app:bundleRelease -Pandroid.testInstrumentationRunnerArguments.class=client.wexbooks.LauncherIconTest` → `BUILD SUCCESSFUL in 48s`, exit 0. XML: 40 unit и 3 целевых Android-теста, без ошибок/пропусков. Полные 30 сценариев чтения относятся к предыдущему этапу; в этом прогоне проверялись ресурсы иконки.
+База: `./gradlew :app:testDebugUnitTest` → `BUILD SUCCESSFUL in 560ms`, exit 0, 40 unit. После замены: `ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleRelease :app:bundleRelease -Pandroid.testInstrumentationRunnerArguments.class=client.wexbooks.LauncherIconTest` → `BUILD SUCCESSFUL in 48s`, exit 0. XML: 40 unit и 3 целевых Android-теста, без ошибок/пропусков. Полные 30 сценариев чтения относятся к предыдущему этапу; в этом прогоне проверялись ресурсы иконки.
 
 На Pixel Android Canvas проверены загрузка всех adaptive-слоёв и отдельного monochrome, круговая безопасная зона для обоих знаков, одинаковый растр normal/round и отрисовка тематического варианта. Кадры `pixel-launcher-icon.png` и `pixel-launcher-icon-themed.png` получены из ресурсов приложения, без снимков личного домашнего экрана и без изменения настроек лаунчера.
 
@@ -90,7 +90,7 @@ Lint завершён без ошибок. Подпись apksigner: `Verifies`,
 
 Код `fac0118` и `a6f7409` исправляет скачок высоты страницы при скрытии панелей. Текст смещается вместе с раскрытием нижней границы за 320 мс; обратный переход сначала скрывает лишние строки и только затем уменьшает вёрстку. Native ждёт готовой геометрии, EPUB — public WebView visual-state callback. Cutout камеры учитывается независимо от видимости системных полос, с дополнительными 12 dp сверху или сбоку в альбомном режиме. Настройки Aa и шрифтов не менялись.
 
-Финальная общая команда `ANDROID_SERIAL=47101FDAS0028Q ./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleRelease :app:bundleRelease` → `BUILD SUCCESSFUL in 1m 31s`, exit 0. XML: 44 unit и 38 Android, failures/errors/skipped=0. Lint без ошибок.
+Финальная общая команда `ANDROID_SERIAL=<YOUR_DEVICE_SERIAL> ./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleRelease :app:bundleRelease` → `BUILD SUCCESSFUL in 1m 31s`, exit 0. XML: 44 unit и 38 Android, failures/errors/skipped=0. Lint без ошибок.
 
 Пять новых Android-проверок: промежуточные и конечные PixelCopy-кадры native/EPUB, реальная смена положения текста и постепенное появление нижних строк, восстановление якоря и только два конечных размера вёрстки, камера в портретном/альбомном положении, уменьшение движения и команда перелистывания посреди сворачивания. Последняя ждёт правильной короткой границы страницы и не пропускает строки. Четыре новых unit-проверки покрывают расчёт безопасных отступов. PixelCopy читает только окно тестового приложения; физический вырез камеры проверяется по системным inset-данным и фактическим bounds текста, а не по невидимому на скриншоте аппаратному отверстию.
 
